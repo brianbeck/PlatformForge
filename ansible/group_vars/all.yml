@@ -1,0 +1,21 @@
+---
+# PlatformForge bootstrap configuration
+
+# Argo CD
+argocd_namespace: argocd
+argocd_chart_version: "7.7.12"
+argocd_helm_repo: https://argoproj.github.io/argo-helm
+
+# Git repository (update to your fork/clone URL)
+platformforge_repo_url: "https://github.com/YOUR_ORG/PlatformForge.git"
+platformforge_repo_revision: "main"
+
+# Namespace conventions
+# Model A: namespaces are suffixed (-stage, -prod)
+# Model B: namespaces are plain (deployed to separate clusters)
+stage_namespace_suffix: "-stage"
+prod_namespace_suffix: "-prod"
+
+# Platform services
+falco_namespace: falco
+gatekeeper_namespace: gatekeeper-system

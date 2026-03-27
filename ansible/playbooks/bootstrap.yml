@@ -1,0 +1,69 @@
+---
+# PlatformForge Bootstrap Playbook
+#
+# This playbook:
+#   1. Discovers the environment model (single or multi-cluster)
+#   2. Discovers and verifies kubectl contexts
+#   3. Installs and configures Argo CD
+#   4. Applies AppProjects and Applications
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook playbooks/bootstrap.yml
+
+- name: Bootstrap PlatformForge
+  hosts: localhost
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify required tools are installed
+      ansible.builtin.command:
+        cmd: "{{ item }} version"
+      loop:
+        - kubectl
+        - helm
+      changed_when: false
+      register: tool_check
+      failed_when: tool_check.rc != 0
+
+    - name: Display welcome message
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+           PlatformForge Bootstrap
+          ================================================
+
+           This playbook will:
+            1. Ask which environment model you are using
+            2. Discover and verify your kubectl contexts
+            3. Install Argo CD
+            4. Configure AppProjects and Applications
+               for Falco and OPA Gatekeeper
+
+          ================================================
+
+  roles:
+    - discover_environment
+    - discover_contexts
+    - argocd_bootstrap
+
+  post_tasks:
+    - name: Bootstrap complete
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+           PlatformForge bootstrap complete!
+          ================================================
+
+           Environment config written to: environments.yml
+           Argo CD is running and managing:
+             - Falco (stage + prod)
+             - OPA Gatekeeper (stage + prod)
+
+           Next steps:
+             1. Commit environments.yml if you want to
+                track your environment config in Git
+             2. Access Argo CD UI (see instructions above)
+             3. Verify Applications are syncing
+
+          ================================================

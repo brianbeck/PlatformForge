@@ -1,0 +1,66 @@
+# Require containers to run as non-root.
+# Running as root inside a container increases the blast radius of
+# container escapes and privilege escalation vulnerabilities.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequirenonroot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    description: Requires containers to run as non-root user
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireNonRoot
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptImages:
+              description: List of image patterns to exempt (glob supported)
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequirenonroot
+
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          not is_exempt(container)
+          not has_nonroot_secctx(container)
+          msg := sprintf("Container <%v> must set securityContext.runAsNonRoot=true or securityContext.runAsUser > 0", [container.name])
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        has_nonroot_secctx(container) {
+          container.securityContext.runAsNonRoot == true
+        }
+
+        has_nonroot_secctx(container) {
+          container.securityContext.runAsUser > 0
+        }
+
+        # Also accept pod-level securityContext
+        has_nonroot_secctx(container) {
+          input.review.object.spec.securityContext.runAsNonRoot == true
+        }
+
+        has_nonroot_secctx(container) {
+          input.review.object.spec.securityContext.runAsUser > 0
+        }
+
+        is_exempt(container) {
+          exempt_images := object.get(input, ["parameters", "exemptImages"], [])
+          img := container.image
+          glob.match(exempt_images[_], ["/"], img)
+        }

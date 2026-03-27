@@ -1,0 +1,28 @@
+# Gatekeeper stage overlay
+# Layered on top of base-values.yaml
+
+# More verbose logging in stage
+logLevel: DEBUG
+
+# More frequent audit in stage for faster feedback
+audit:
+  interval: 30
+
+# Smaller footprint for stage
+resources:
+  controller:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  audit:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+replicas: 1

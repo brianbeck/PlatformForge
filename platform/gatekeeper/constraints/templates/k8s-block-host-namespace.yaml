@@ -1,0 +1,59 @@
+# Block host namespace sharing (hostPID, hostIPC, hostNetwork).
+# Sharing the host namespace breaks container isolation and allows
+# a pod to see/interact with all processes on the node.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblockhostnamespace
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    description: Blocks pods from using host namespaces
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockHostNamespace
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowHostNetwork:
+              type: boolean
+            allowHostPID:
+              type: boolean
+            allowHostIPC:
+              type: boolean
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sblockhostnamespace
+
+        violation[{"msg": msg}] {
+          not allow_host_pid
+          input.review.object.spec.hostPID == true
+          msg := "hostPID is not allowed"
+        }
+
+        violation[{"msg": msg}] {
+          not allow_host_ipc
+          input.review.object.spec.hostIPC == true
+          msg := "hostIPC is not allowed"
+        }
+
+        violation[{"msg": msg}] {
+          not allow_host_network
+          input.review.object.spec.hostNetwork == true
+          msg := "hostNetwork is not allowed"
+        }
+
+        allow_host_pid {
+          object.get(input, ["parameters", "allowHostPID"], false) == true
+        }
+
+        allow_host_ipc {
+          object.get(input, ["parameters", "allowHostIPC"], false) == true
+        }
+
+        allow_host_network {
+          object.get(input, ["parameters", "allowHostNetwork"], false) == true
+        }

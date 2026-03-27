@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: falco-stage
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    platformforge/env: stage
+    platformforge/service: falco
+spec:
+  project: platform-stage
+
+  # Multi-source: Helm chart + values from this Git repo
+  sources:
+    # Source 1: Falco Helm chart
+    - repoURL: https://falcosecurity.github.io/charts
+      chart: falco
+      targetRevision: "4.16.3"
+      helm:
+        valueFiles:
+          - $values/platform/falco/base-values.yaml
+          - $values/platform/falco/overlays/stage/values.yaml
+
+    # Source 2: This Git repo (for values files and custom rules)
+    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
+      targetRevision: main
+      ref: values
+
+    # Source 3: Custom rule manifests from this repo
+    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
+      targetRevision: main
+      path: platform/falco/rules
+
+  destination:
+    # Model A: https://kubernetes.default.svc with namespace falco-stage
+    # Model B: https://kubernetes.default.svc with namespace falco
+    server: https://kubernetes.default.svc
+    namespace: falco-stage
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 3m

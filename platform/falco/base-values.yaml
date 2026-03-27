@@ -1,0 +1,187 @@
+# Falco base Helm values
+# Shared across all environments - override per-env in overlays/
+
+driver:
+  # Use modern eBPF driver (no kernel module needed)
+  kind: modern_ebpf
+
+collectors:
+  # Enable container runtime metadata enrichment
+  containerd:
+    enabled: true
+  docker:
+    enabled: false
+  cri:
+    enabled: true
+
+falco:
+  # Output formatting
+  json_output: true
+  json_include_output_property: true
+  log_stderr: true
+  log_syslog: false
+  log_level: info
+
+  # Buffered outputs for performance
+  buffered_outputs: true
+  outputs_queue:
+    capacity: 0
+
+  # Rule loading order: default rules, then custom overrides
+  rules_files:
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/falco_rules.local.yaml
+    - /etc/falco/rules.d
+
+  # gRPC output for integration with sidekick/UI
+  grpc:
+    enabled: true
+    bind_address: "unix:///run/falco/falco.sock"
+  grpc_output:
+    enabled: true
+
+  # HTTP output (for falcosidekick or webhook integration)
+  http_output:
+    enabled: false
+    url: ""
+
+# Falcosidekick integration (disabled by default, enable per-env)
+falcosidekick:
+  enabled: false
+
+# Resource defaults (conservative starting point)
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Tolerations to run on all nodes including masters
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+
+# Priority class for reliable scheduling
+priorityClassName: system-node-critical
+
+# Custom rules loaded into /etc/falco/rules.d/
+# These APPEND to default rules - they do not replace them
+customRules:
+  platformforge-rules.yaml: |
+    # ============================================================
+    # PlatformForge Custom Falco Rules
+    # ============================================================
+    # These rules supplement (not replace) Falco's default ruleset.
+    # Use 'append: true' to modify existing rules, or define new
+    # rules with unique names.
+    # ============================================================
+
+    # --- Override: reduce noise from known-safe container activity ---
+
+    - rule: Terminal shell in container
+      desc: Detect shell opened in a container (override to set WARNING for platform namespaces)
+      condition: >
+        spawned_process and container
+        and shell_procs
+        and proc.tty != 0
+        and container_entrypoint
+        and not user_expected_terminal_shell_in_container_conditions
+      output: >
+        Shell opened in container
+        (evt_type=%evt.type user=%user.name user_uid=%user.uid user_loginuid=%user.loginuid
+        process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname
+        command=%proc.cmdline terminal=%proc.tty exe_flags=%evt.arg.flags
+        %container.info)
+      priority: WARNING
+      tags: [container, shell, mitre_execution]
+      append: false
+
+    # --- New rules: Kubernetes-specific security detections ---
+
+    - rule: Sensitive file read in container
+      desc: Detect reads of sensitive files (passwords, tokens, keys) inside containers
+      condition: >
+        open_read and container
+        and (fd.name startswith /etc/shadow
+             or fd.name startswith /etc/passwd
+             or fd.name startswith /run/secrets
+             or fd.name startswith /var/run/secrets/kubernetes.io)
+        and not proc.name in (kubelet, kube-proxy)
+      output: >
+        Sensitive file read in container
+        (file=%fd.name evt_type=%evt.type user=%user.name
+        process=%proc.name command=%proc.cmdline %container.info)
+      priority: WARNING
+      tags: [container, filesystem, mitre_credential_access]
+
+    - rule: Unexpected outbound connection
+      desc: >
+        Detect outbound network connections to non-standard ports from containers.
+        Helps identify potential C2 channels or data exfiltration.
+      condition: >
+        outbound and container
+        and not (fd.sport in (53, 80, 443, 8080, 8443, 6443))
+        and not (k8s.ns.name in (kube-system, falco, gatekeeper-system))
+      output: >
+        Unexpected outbound connection from container
+        (connection=%fd.name sport=%fd.sport dport=%fd.dport
+        process=%proc.name command=%proc.cmdline %container.info)
+      priority: NOTICE
+      tags: [container, network, mitre_command_and_control]
+
+    - rule: Container privilege escalation
+      desc: Detect attempts to escalate privileges inside a container
+      condition: >
+        spawned_process and container
+        and (proc.name in (sudo, su, newgrp, sg)
+             or proc.name = setuid
+             or proc.name = setgid)
+      output: >
+        Privilege escalation attempt in container
+        (user=%user.name process=%proc.name parent=%proc.pname
+        command=%proc.cmdline %container.info)
+      priority: WARNING
+      tags: [container, process, mitre_privilege_escalation]
+
+    - rule: Crypto mining process detected
+      desc: Detect known crypto mining processes or arguments
+      condition: >
+        spawned_process and container
+        and (proc.name in (xmrig, minerd, minergate-cli, cpuminer)
+             or proc.cmdline contains "stratum+tcp"
+             or proc.cmdline contains "stratum+ssl"
+             or proc.cmdline contains "cryptonight"
+             or proc.cmdline contains "-o pool.")
+      output: >
+        Crypto mining activity detected in container
+        (process=%proc.name command=%proc.cmdline %container.info)
+      priority: CRITICAL
+      tags: [container, process, mitre_resource_hijacking, cryptomining]
+
+    - rule: Unexpected K8s API access from container
+      desc: >
+        Detect containers accessing the Kubernetes API server that are not
+        expected system components.
+      condition: >
+        outbound and container
+        and fd.sport = 6443
+        and not k8s.ns.name in (kube-system, argocd, falco, gatekeeper-system)
+      output: >
+        Container accessing K8s API server unexpectedly
+        (namespace=%k8s.ns.name pod=%k8s.pod.name
+        process=%proc.name command=%proc.cmdline connection=%fd.name)
+      priority: NOTICE
+      tags: [container, network, k8s_api, mitre_discovery]
+
+    # --- Macro overrides for tuning ---
+
+    - macro: user_expected_terminal_shell_in_container_conditions
+      condition: >
+        (k8s.ns.name in (kube-system))
+      append: false

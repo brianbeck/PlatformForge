@@ -1,0 +1,28 @@
+# Falco prod overlay
+# Layered on top of base-values.yaml
+
+falco:
+  log_level: info
+
+  # Only surface WARNING and above in prod to reduce noise
+  priority: WARNING
+
+  # Enable HTTP output for alerting pipeline in prod
+  http_output:
+    enabled: true
+    url: "http://falcosidekick.falco-prod.svc.cluster.local:2801"
+
+# Prod: larger resource allocation
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Enable falcosidekick in prod for alert forwarding
+falcosidekick:
+  enabled: true
+  config:
+    debug: false

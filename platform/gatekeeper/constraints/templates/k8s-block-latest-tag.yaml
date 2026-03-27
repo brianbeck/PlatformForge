@@ -1,0 +1,58 @@
+# Block the :latest image tag.
+# Using :latest makes deployments non-reproducible and can introduce
+# unexpected changes when images are rebuilt.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblocklatesttag
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    description: Blocks containers using the :latest image tag
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockLatestTag
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptImages:
+              description: List of image patterns to exempt (glob supported)
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sblocklatesttag
+
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          not is_exempt(container)
+          has_latest_tag(container.image)
+          msg := sprintf("Container <%v> uses :latest tag: %v. Use an explicit version tag.", [container.name, container.image])
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+
+        input_containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        has_latest_tag(image) {
+          endswith(image, ":latest")
+        }
+
+        has_latest_tag(image) {
+          # No tag at all implies :latest
+          not contains(image, ":")
+        }
+
+        is_exempt(container) {
+          exempt_images := object.get(input, ["parameters", "exemptImages"], [])
+          img := container.image
+          glob.match(exempt_images[_], ["/"], img)
+        }

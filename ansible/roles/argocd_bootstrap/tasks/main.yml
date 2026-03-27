@@ -1,0 +1,164 @@
+---
+# Install and configure Argo CD via Helm, then apply AppProjects and Applications.
+
+- name: Add Argo CD Helm repository
+  ansible.builtin.command:
+    cmd: "helm repo add argo {{ argocd_helm_repo }}"
+  register: helm_repo_add
+  changed_when: "'has been added' in helm_repo_add.stdout"
+  failed_when: false
+
+- name: Update Helm repositories
+  ansible.builtin.command:
+    cmd: helm repo update
+  changed_when: false
+
+# --- Install Argo CD to stage context ---
+
+- name: Create Argo CD namespace (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} create namespace {{ argocd_namespace }}"
+  register: ns_create_stage
+  changed_when: "'created' in ns_create_stage.stdout"
+  failed_when:
+    - ns_create_stage.rc != 0
+    - "'already exists' not in ns_create_stage.stderr"
+
+- name: Template Argo CD Helm values (stage)
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: "/tmp/argocd-values-stage.yml"
+    mode: "0644"
+  vars:
+    argocd_env: stage
+
+- name: Install Argo CD via Helm (stage)
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install argocd argo/argo-cd
+      --namespace {{ argocd_namespace }}
+      --kube-context {{ stage_context }}
+      --version {{ argocd_chart_version }}
+      --values /tmp/argocd-values-stage.yml
+      --wait --timeout 5m
+  register: helm_install_stage
+  changed_when: "'has been upgraded' in helm_install_stage.stdout or 'has been installed' in helm_install_stage.stdout"
+
+- name: Wait for Argo CD server to be ready (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }}
+      -n {{ argocd_namespace }}
+      rollout status deployment/argocd-server
+      --timeout=300s
+  changed_when: false
+
+# --- Install Argo CD to prod context (Model B only) ---
+
+- name: Create Argo CD namespace (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} create namespace {{ argocd_namespace }}"
+  register: ns_create_prod
+  changed_when: "'created' in ns_create_prod.stdout"
+  failed_when:
+    - ns_create_prod.rc != 0
+    - "'already exists' not in ns_create_prod.stderr"
+
+- name: Template Argo CD Helm values (prod)
+  when: multi_cluster | bool
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: "/tmp/argocd-values-prod.yml"
+    mode: "0644"
+  vars:
+    argocd_env: prod
+
+- name: Install Argo CD via Helm (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install argocd argo/argo-cd
+      --namespace {{ argocd_namespace }}
+      --kube-context {{ prod_context }}
+      --version {{ argocd_chart_version }}
+      --values /tmp/argocd-values-prod.yml
+      --wait --timeout 5m
+  register: helm_install_prod
+  changed_when: "'has been upgraded' in helm_install_prod.stdout or 'has been installed' in helm_install_prod.stdout"
+
+- name: Wait for Argo CD server to be ready (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }}
+      -n {{ argocd_namespace }}
+      rollout status deployment/argocd-server
+      --timeout=300s
+  changed_when: false
+
+# --- Apply AppProjects ---
+
+- name: Apply stage AppProject
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+  register: project_stage
+  changed_when: "'configured' in project_stage.stdout or 'created' in project_stage.stdout"
+
+- name: Apply prod AppProject
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
+  register: project_prod
+  changed_when: "'configured' in project_prod.stdout or 'created' in project_prod.stdout"
+
+# --- Apply Applications ---
+
+- name: Apply stage Applications
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/apps/stage/"
+  register: apps_stage
+  changed_when: "'configured' in apps_stage.stdout or 'created' in apps_stage.stdout"
+
+- name: Apply prod Applications
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/apps/prod/"
+  register: apps_prod
+  changed_when: "'configured' in apps_prod.stdout or 'created' in apps_prod.stdout"
+
+# --- Clean up temp files ---
+
+- name: Remove temporary Helm values files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/argocd-values-stage.yml
+    - /tmp/argocd-values-prod.yml
+
+- name: Display Argo CD access information
+  ansible.builtin.debug:
+    msg: |
+      Argo CD Bootstrap Complete
+      ==========================
+
+      Stage Argo CD:
+        Context: {{ stage_context }}
+        Namespace: {{ argocd_namespace }}
+        Get admin password:
+          kubectl --context {{ stage_context }} -n {{ argocd_namespace }} \
+            get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+        Port forward:
+          kubectl --context {{ stage_context }} -n {{ argocd_namespace }} \
+            port-forward svc/argocd-server 8080:443
+
+      {% if multi_cluster | bool %}
+      Prod Argo CD:
+        Context: {{ prod_context }}
+        Namespace: {{ argocd_namespace }}
+        Get admin password:
+          kubectl --context {{ prod_context }} -n {{ argocd_namespace }} \
+            get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+        Port forward:
+          kubectl --context {{ prod_context }} -n {{ argocd_namespace }} \
+            port-forward svc/argocd-server 8081:443
+      {% endif %}

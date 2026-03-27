@@ -1,0 +1,44 @@
+---
+# Discover which environment model the user is running:
+#   Model A: single cluster with stage/prod namespaces
+#   Model B: separate clusters for stage and prod
+
+- name: Prompt for environment model
+  ansible.builtin.pause:
+    prompt: |
+
+      PlatformForge Environment Model Selection
+      ==========================================
+
+      Model A: Single Kubernetes cluster with separate stage and prod namespaces
+      Model B: Two Kubernetes clusters, one for stage and one for prod
+
+      Which model are you using? (A/B)
+  register: env_model_input
+
+- name: Normalize environment model
+  ansible.builtin.set_fact:
+    env_model: "{{ env_model_input.user_input | upper | trim }}"
+
+- name: Validate environment model selection
+  ansible.builtin.assert:
+    that:
+      - env_model in ['A', 'B']
+    fail_msg: "Invalid selection '{{ env_model }}'. Please choose A or B."
+    success_msg: "Environment model {{ env_model }} selected."
+
+- name: Set environment model facts
+  ansible.builtin.set_fact:
+    single_cluster: "{{ env_model == 'A' }}"
+    multi_cluster: "{{ env_model == 'B' }}"
+
+- name: Display model summary
+  ansible.builtin.debug:
+    msg: >-
+      {% if single_cluster %}
+      Model A: Single cluster mode. Stage and prod will be deployed as
+      separate namespaces within the same cluster.
+      {% else %}
+      Model B: Multi-cluster mode. Stage and prod will be deployed to
+      separate Kubernetes clusters.
+      {% endif %}

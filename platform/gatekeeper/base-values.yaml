@@ -1,0 +1,62 @@
+# OPA Gatekeeper base Helm values
+# Shared across all environments - override per-env in overlays/
+
+# Run in enforcement mode by default
+# Override to "dryrun" in stage if desired
+controllerManager:
+  exemptNamespaces:
+    - kube-system
+    - gatekeeper-system
+    - argocd
+
+# Audit configuration
+audit:
+  # How often Gatekeeper audits existing resources for violations
+  interval: 60
+  # Maximum number of violations to report per constraint
+  constraintViolationsLimit: 20
+  # Audit from cache (faster) rather than live API calls
+  fromCache: true
+
+# Webhook configuration
+webhook:
+  # Fail-open so a Gatekeeper outage doesn't block the cluster
+  failurePolicy: Ignore
+  # Timeout for admission webhook calls
+  timeoutSeconds: 5
+
+# Enable mutation webhooks (for assign/modify resources)
+mutatingWebhook:
+  enabled: false
+
+# Resource defaults
+resources:
+  controller:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  audit:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# Emit admission events for visibility
+emitAdmissionEvents: true
+emitAuditEvents: true
+
+# Pod disruption budget
+pdb:
+  controllerManager:
+    minAvailable: 1
+
+# Log level (0=info, higher=more verbose)
+logLevel: INFO
+
+# Replicas
+replicas: 1

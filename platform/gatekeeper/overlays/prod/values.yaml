@@ -1,0 +1,36 @@
+# Gatekeeper prod overlay
+# Layered on top of base-values.yaml
+
+logLevel: WARNING
+
+audit:
+  interval: 120
+  constraintViolationsLimit: 50
+
+# Stricter webhook in prod -- fail closed
+webhook:
+  failurePolicy: Fail
+  timeoutSeconds: 10
+
+# Higher availability for prod
+replicas: 3
+
+resources:
+  controller:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  audit:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+pdb:
+  controllerManager:
+    minAvailable: 2

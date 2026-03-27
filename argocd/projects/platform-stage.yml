@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-stage
+  namespace: argocd
+spec:
+  description: PlatformForge stage environment platform services
+
+  # Only allow deploying from this repository
+  sourceRepos:
+    - "https://github.com/YOUR_ORG/PlatformForge.git"
+    - "https://falcosecurity.github.io/charts"
+    - "https://open-policy-agent.github.io/gatekeeper/charts"
+
+  # Allowed destination namespaces for stage
+  destinations:
+    - server: "https://kubernetes.default.svc"
+      namespace: "falco-stage"
+    - server: "https://kubernetes.default.svc"
+      namespace: "gatekeeper-system"
+    - server: "https://kubernetes.default.svc"
+      namespace: "falco"
+
+  # Deny cluster-scoped resources by default, allow specific ones
+  # Gatekeeper CRDs (ConstraintTemplates, Constraints) are cluster-scoped
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: templates.gatekeeper.sh
+      kind: ConstraintTemplate
+    - group: constraints.gatekeeper.sh
+      kind: "*"
+
+  # Allow all namespace-scoped resources
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Prevent accidental deletion of important resources
+  orphanedResources:
+    warn: true
