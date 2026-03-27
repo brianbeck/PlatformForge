@@ -10,6 +10,7 @@ spec:
     - "https://github.com/YOUR_ORG/PlatformForge.git"
     - "https://falcosecurity.github.io/charts"
     - "https://open-policy-agent.github.io/gatekeeper/charts"
+    - "https://prometheus-community.github.io/helm-charts"
 
   destinations:
     - server: "https://kubernetes.default.svc"
@@ -17,9 +18,13 @@ spec:
     - server: "https://kubernetes.default.svc"
       namespace: "gatekeeper-system"
     - server: "https://kubernetes.default.svc"
+      namespace: "monitoring-prod"
+    - server: "https://kubernetes.default.svc"
       namespace: "falco"
+    - server: "https://kubernetes.default.svc"
+      namespace: "monitoring"
 
-  # Gatekeeper CRDs (ConstraintTemplates, Constraints) are cluster-scoped
+  # Cluster-scoped resources needed by platform services
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -31,17 +36,64 @@ spec:
       kind: ConstraintTemplate
     - group: constraints.gatekeeper.sh
       kind: "*"
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
 
+  # Scoped namespace resources
   namespaceResourceWhitelist:
-    - group: "*"
-      kind: "*"
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: DaemonSet
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: apps
+      kind: ReplicaSet
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: ""
+      kind: Endpoints
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+    - group: monitoring.coreos.com
+      kind: Prometheus
+    - group: monitoring.coreos.com
+      kind: Alertmanager
+    - group: ""
+      kind: Pod
+    - group: batch
+      kind: Job
+    - group: policy
+      kind: PodDisruptionBudget
 
   orphanedResources:
     warn: true
 
-  # Prod-specific: require manual sync for safety
+  # Prod-specific: deny automated sync for all apps in this project
   syncWindows:
-    - kind: allow
+    - kind: deny
       schedule: "* * * * *"
       duration: 24h
+      applications:
+        - "*"
       manualSync: true

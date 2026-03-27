@@ -7,6 +7,10 @@ metadata:
     app.kubernetes.io/part-of: platformforge
     platformforge/env: stage
     platformforge/service: gatekeeper
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    notifications.argoproj.io/subscribe.on-health-degraded: ""
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
 spec:
   project: platform-stage
 

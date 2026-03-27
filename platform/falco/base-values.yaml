@@ -2,7 +2,11 @@
 # Shared across all environments - override per-env in overlays/
 
 driver:
-  # Use modern eBPF driver (no kernel module needed)
+  # Use modern eBPF driver (no kernel module needed).
+  # Requires kernel 5.8+ with BTF support. ClusterForge default images
+  # meet this requirement. If running on an older kernel, change to:
+  #   kind: kmod    (kernel module, requires kernel headers)
+  #   kind: ebpf    (legacy eBPF probe, requires kernel 4.14+)
   kind: modern_ebpf
 
 collectors:
@@ -103,7 +107,7 @@ customRules:
 
     - macro: platformforge_system_namespaces
       condition: >
-        (k8s.ns.name in ("kube-system", "argocd", "falco", "falco-stage", "falco-prod", "gatekeeper-system"))
+        (k8s.ns.name in ("kube-system", "argocd", "falco", "falco-stage", "falco-prod", "gatekeeper-system", "monitoring", "monitoring-stage", "monitoring-prod"))
 
     # --- Override: reduce noise from known-safe container activity ---
 

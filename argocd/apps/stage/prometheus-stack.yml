@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-stack-stage
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    platformforge/env: stage
+    platformforge/service: prometheus-stack
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    notifications.argoproj.io/subscribe.on-health-degraded: ""
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
+spec:
+  project: platform-stage
+
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: "67.9.0"
+      helm:
+        valueFiles:
+          - $values/platform/prometheus-stack/base-values.yaml
+          - $values/platform/prometheus-stack/overlays/stage/values.yaml
+        # Skip CRD installation via Helm -- managed separately for safety
+        skipCrds: false
+
+    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    # MANAGED BY BOOTSTRAP: updated based on environment model
+    server: https://kubernetes.default.svc
+    namespace: monitoring-stage
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      # CRDs can be large; server-side apply handles them better
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  # Ignore known-noisy diffs from the prometheus-stack chart
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.failurePolicy
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.failurePolicy

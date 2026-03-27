@@ -13,7 +13,6 @@ server:
   service:
     type: ClusterIP
 
-  # Resource limits appropriate for platform use
   resources:
     requests:
       cpu: 100m
@@ -31,6 +30,14 @@ controller:
       cpu: "1"
       memory: 512Mi
 
+  # Emit Kubernetes events on app health/sync changes
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      labels:
+        app.kubernetes.io/part-of: platformforge
+
 repoServer:
   resources:
     requests:
@@ -43,7 +50,82 @@ repoServer:
 configs:
   params:
     # Reconciliation interval
-    timeout.reconciliation: 180s
+    timeout.reconciliation: 60s
   cm:
-    # Allow tracking by label
+    # Allow tracking by annotation
     application.resourceTrackingMethod: annotation
+
+    # Argo CD Notifications triggers for Falco health monitoring
+    # Argo CD evaluates Application health status continuously;
+    # these notifications fire when Falco or Gatekeeper apps degrade.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs
+
+  # RBAC: restrict default role to read-only
+  rbac:
+    policy.default: role:readonly
+    policy.csv: |
+      p, role:platform-admin, applications, *, platform-{{ argocd_env }}/*, allow
+      p, role:platform-admin, projects, get, platform-{{ argocd_env }}, allow
+      g, admin, role:platform-admin
+
+  # Notifications configuration
+  notifications:
+    enabled: true
+    # Templates for alert messages
+    templates:
+      template.app-health-degraded: |
+        message: |
+          Application {{`{{.app.metadata.name}}`}} health is {{`{{.app.status.health.status}}`}}.
+          Sync status: {{`{{.app.status.sync.status}}`}}
+          {{`{{if .app.status.health.message}}`}}Message: {{`{{.app.status.health.message}}`}}{{`{{end}}`}}
+      template.app-sync-failed: |
+        message: |
+          Application {{`{{.app.metadata.name}}`}} sync failed.
+          {{`{{if .app.status.operationState}}`}}
+          Error: {{`{{.app.status.operationState.message}}`}}
+          {{`{{end}}`}}
+      template.app-sync-succeeded: |
+        message: |
+          Application {{`{{.app.metadata.name}}`}} synced successfully.
+          Revision: {{`{{.app.status.sync.revision}}`}}
+
+    # Triggers define when notifications fire
+    triggers:
+      trigger.on-health-degraded: |
+        - when: app.status.health.status == 'Degraded' || app.status.health.status == 'Missing'
+          send: [app-health-degraded]
+      trigger.on-sync-failed: |
+        - when: app.status.operationState.phase in ['Error', 'Failed']
+          send: [app-sync-failed]
+      trigger.on-sync-succeeded: |
+        - when: app.status.operationState.phase == 'Succeeded'
+          send: [app-sync-succeeded]
+
+    # Subscriptions: apply triggers to all apps by default
+    subscriptions:
+      - recipients: []
+        triggers:
+          - on-health-degraded
+          - on-sync-failed
+
+    # Service configuration (configure your destination here)
+    # Uncomment ONE of the following blocks and add credentials:
+    #
+    # services:
+    #   service.slack: |
+    #     token: $slack-token
+    #     channel: platform-alerts
+    #
+    #   service.webhook.generic: |
+    #     url: https://your-webhook-url.example.com
+    #     headers:
+    #       - name: Content-Type
+    #         value: application/json

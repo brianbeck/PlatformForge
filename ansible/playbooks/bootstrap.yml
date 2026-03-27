@@ -38,7 +38,7 @@
             2. Discover and verify your kubectl contexts
             3. Install Argo CD
             4. Configure AppProjects and Applications
-               for Falco and OPA Gatekeeper
+               for Falco, OPA Gatekeeper, and Prometheus
 
           ================================================
 
@@ -59,6 +59,7 @@
            Argo CD is running and managing:
              - Falco (stage + prod)
              - OPA Gatekeeper (stage + prod)
+             - kube-prometheus-stack (stage + prod)
 
            Next steps:
              1. Commit environments.yml if you want to

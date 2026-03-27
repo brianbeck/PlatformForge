@@ -7,6 +7,10 @@ metadata:
     app.kubernetes.io/part-of: platformforge
     platformforge/env: stage
     platformforge/service: falco
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    notifications.argoproj.io/subscribe.on-health-degraded: ""
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
 spec:
   project: platform-stage
 
@@ -21,19 +25,20 @@ spec:
           - $values/platform/falco/base-values.yaml
           - $values/platform/falco/overlays/stage/values.yaml
 
-    # Source 2: This Git repo (for values files and custom rules)
+    # Source 2: This Git repo (for values files reference)
     - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
       targetRevision: main
       ref: values
 
-    # Source 3: Custom rule manifests from this repo
+    # Source 3: Additional manifests (NetworkPolicies, PrometheusRules)
     - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
       targetRevision: main
       path: platform/falco/rules
 
   destination:
-    # Model A: https://kubernetes.default.svc with namespace falco-stage
-    # Model B: https://kubernetes.default.svc with namespace falco
+    # MANAGED BY BOOTSTRAP: updated based on environment model
+    # Model A: namespace falco-stage, server https://kubernetes.default.svc
+    # Model B: namespace falco, server https://kubernetes.default.svc
     server: https://kubernetes.default.svc
     namespace: falco-stage
 

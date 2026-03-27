@@ -13,6 +13,99 @@
     cmd: helm repo update
   changed_when: false
 
+# --- Compute namespace and server values based on environment model ---
+
+- name: Set namespace and server facts for Model A (single cluster)
+  when: single_cluster | bool
+  ansible.builtin.set_fact:
+    falco_stage_namespace: "falco-stage"
+    falco_prod_namespace: "falco-prod"
+    gatekeeper_stage_namespace: "gatekeeper-system"
+    gatekeeper_prod_namespace: "gatekeeper-system"
+    monitoring_stage_namespace: "monitoring-stage"
+    monitoring_prod_namespace: "monitoring-prod"
+    stage_destination_server: "https://kubernetes.default.svc"
+    prod_destination_server: "https://kubernetes.default.svc"
+
+- name: Set namespace and server facts for Model B (multi-cluster)
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    falco_stage_namespace: "falco"
+    falco_prod_namespace: "falco"
+    gatekeeper_stage_namespace: "gatekeeper-system"
+    gatekeeper_prod_namespace: "gatekeeper-system"
+    monitoring_stage_namespace: "monitoring"
+    monitoring_prod_namespace: "monitoring"
+    stage_destination_server: "https://kubernetes.default.svc"
+    prod_destination_server: "https://kubernetes.default.svc"
+
+# --- Patch Application manifests for environment model ---
+# Uses sed to update destination namespace/server in Application YAMLs.
+# This avoids requiring yq as a dependency.
+
+- name: Patch stage Falco Application namespace
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/apps/stage/falco.yml"
+    regexp: 'namespace: falco-stage$'
+    replace: "namespace: {{ falco_stage_namespace }}"
+  when: falco_stage_namespace != "falco-stage"
+
+- name: Patch prod Falco Application namespace
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/apps/prod/falco.yml"
+    regexp: 'namespace: falco-prod$'
+    replace: "namespace: {{ falco_prod_namespace }}"
+  when: falco_prod_namespace != "falco-prod"
+
+- name: Patch stage Gatekeeper Application namespace
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/apps/stage/gatekeeper.yml"
+    regexp: 'namespace: gatekeeper-system$'
+    replace: "namespace: {{ gatekeeper_stage_namespace }}"
+  when: gatekeeper_stage_namespace != "gatekeeper-system"
+
+- name: Patch AppProject destination namespaces (stage)
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+    regexp: 'namespace: "falco-stage"'
+    replace: 'namespace: "{{ falco_stage_namespace }}"'
+  when: falco_stage_namespace != "falco-stage"
+
+- name: Patch AppProject destination namespaces (prod)
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
+    regexp: 'namespace: "falco-prod"'
+    replace: 'namespace: "{{ falco_prod_namespace }}"'
+  when: falco_prod_namespace != "falco-prod"
+
+- name: Patch stage Prometheus Application namespace
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/apps/stage/prometheus-stack.yml"
+    regexp: 'namespace: monitoring-stage$'
+    replace: "namespace: {{ monitoring_stage_namespace }}"
+  when: monitoring_stage_namespace != "monitoring-stage"
+
+- name: Patch prod Prometheus Application namespace
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/apps/prod/prometheus-stack.yml"
+    regexp: 'namespace: monitoring-prod$'
+    replace: "namespace: {{ monitoring_prod_namespace }}"
+  when: monitoring_prod_namespace != "monitoring-prod"
+
+- name: Patch AppProject monitoring namespace (stage)
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+    regexp: 'namespace: "monitoring-stage"'
+    replace: 'namespace: "{{ monitoring_stage_namespace }}"'
+  when: monitoring_stage_namespace != "monitoring-stage"
+
+- name: Patch AppProject monitoring namespace (prod)
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
+    regexp: 'namespace: "monitoring-prod"'
+    replace: 'namespace: "{{ monitoring_prod_namespace }}"'
+  when: monitoring_prod_namespace != "monitoring-prod"
+
 # --- Install Argo CD to stage context ---
 
 - name: Create Argo CD namespace (stage)
@@ -97,6 +190,28 @@
       --timeout=300s
   changed_when: false
 
+# --- Dry-run validation before applying ---
+
+- name: Validate stage AppProject (dry-run)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+  changed_when: false
+
+- name: Validate stage Applications (dry-run)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/apps/stage/"
+  changed_when: false
+
+- name: Validate prod AppProject (dry-run)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
+  changed_when: false
+
+- name: Validate prod Applications (dry-run)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/apps/prod/"
+  changed_when: false
+
 # --- Apply AppProjects ---
 
 - name: Apply stage AppProject
@@ -162,3 +277,9 @@
           kubectl --context {{ prod_context }} -n {{ argocd_namespace }} \
             port-forward svc/argocd-server 8081:443
       {% endif %}
+
+      Post-bootstrap recommendations:
+        1. Change the default admin password
+        2. Configure Argo CD Notifications service (Slack, webhook, etc.)
+           in the Helm values under configs.notifications.services
+        3. Set up SSO/OIDC for team access

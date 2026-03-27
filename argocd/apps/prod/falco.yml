@@ -7,6 +7,11 @@ metadata:
     app.kubernetes.io/part-of: platformforge
     platformforge/env: prod
     platformforge/service: falco
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    notifications.argoproj.io/subscribe.on-health-degraded: ""
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
 spec:
   project: platform-prod
 
@@ -28,6 +33,7 @@ spec:
       path: platform/falco/rules
 
   destination:
+    # MANAGED BY BOOTSTRAP: updated based on environment model
     server: https://kubernetes.default.svc
     namespace: falco-prod
 
