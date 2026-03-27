@@ -1,0 +1,72 @@
+# kube-prometheus-stack prod overlay
+
+prometheus:
+  prometheusSpec:
+    retention: 30d
+    scrapeInterval: 15s
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+    # Persistent storage in prod -- adjust storageClassName for your cluster
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          # storageClassName: your-storage-class
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    # Uncomment to enable remote write to external long-term storage
+    # remoteWrite:
+    #   - url: "https://your-remote-write-endpoint/api/v1/write"
+
+    replicas: 2
+
+  # Higher availability
+  service:
+    type: ClusterIP
+
+alertmanager:
+  alertmanagerSpec:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+  # Configure real receivers for prod alerts
+  # config:
+  #   route:
+  #     routes:
+  #       - receiver: slack-critical
+  #         matchers:
+  #           - severity = "critical"
+  #   receivers:
+  #     - name: slack-critical
+  #       slack_configs:
+  #         - api_url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  #           channel: "#platform-alerts-prod"
+
+grafana:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    enabled: true
+    size: 10Gi

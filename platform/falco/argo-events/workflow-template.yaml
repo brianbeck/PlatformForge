@@ -1,0 +1,79 @@
+# Argo Workflow template for Falco incident response.
+# Customize the steps below to match your incident response runbook.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: falco-incident-response
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  entrypoint: respond
+  serviceAccountName: argo-workflow
+  arguments:
+    parameters:
+      - name: alert-priority
+      - name: alert-rule
+      - name: alert-output
+      - name: container-id
+      - name: namespace
+  templates:
+    - name: respond
+      steps:
+        # Step 1: Log the alert (always runs)
+        - - name: log-alert
+            template: log-alert
+
+        # Step 2: For CRITICAL alerts, take immediate action
+        - - name: critical-response
+            template: critical-response
+            when: "{{workflow.parameters.alert-priority}} == Critical"
+
+    - name: log-alert
+      container:
+        image: alpine:3.19
+        command: [sh, -c]
+        args:
+          - |
+            echo "========================================="
+            echo "Falco Security Alert"
+            echo "========================================="
+            echo "Priority:  {{workflow.parameters.alert-priority}}"
+            echo "Rule:      {{workflow.parameters.alert-rule}}"
+            echo "Namespace: {{workflow.parameters.namespace}}"
+            echo "Container: {{workflow.parameters.container-id}}"
+            echo ""
+            echo "Output:"
+            echo "{{workflow.parameters.alert-output}}"
+            echo "========================================="
+
+    - name: critical-response
+      # Customize this template for your incident response:
+      #
+      # Examples of actions you could take:
+      #   - Send PagerDuty alert
+      #   - Cordon the affected node
+      #   - Capture pod logs and events for forensics
+      #   - Scale down the affected deployment
+      #   - Create a Jira/Linear ticket
+      #
+      # For now, this logs the critical alert. Replace with your
+      # actual response actions.
+      container:
+        image: bitnami/kubectl:latest
+        command: [sh, -c]
+        args:
+          - |
+            echo "CRITICAL ALERT: {{workflow.parameters.alert-rule}}"
+            echo "Namespace: {{workflow.parameters.namespace}}"
+            echo ""
+            echo "Gathering context..."
+            if [ "{{workflow.parameters.namespace}}" != "unknown" ]; then
+              echo "--- Recent events in namespace ---"
+              kubectl get events -n "{{workflow.parameters.namespace}}" \
+                --sort-by='.lastTimestamp' | tail -20
+              echo ""
+              echo "--- Pod status ---"
+              kubectl get pods -n "{{workflow.parameters.namespace}}" \
+                -o wide
+            fi

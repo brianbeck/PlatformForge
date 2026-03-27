@@ -1,0 +1,66 @@
+# PrometheusRule for Falco alerting
+# Deploy alongside Falco; requires Prometheus Operator in-cluster.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: falco-alerts
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  groups:
+    - name: falco.rules
+      rules:
+        # Alert if Falco is not running on all expected nodes
+        - alert: FalcoDaemonSetUnavailable
+          expr: |
+            kube_daemonset_status_number_unavailable{daemonset=~".*falco.*"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Falco DaemonSet has unavailable pods"
+            description: "{{ $labels.daemonset }} has {{ $value }} unavailable pod(s) for 5+ minutes."
+
+        # Alert if Falco stops emitting events entirely (may indicate crash)
+        - alert: FalcoNoEventsDetected
+          expr: |
+            rate(falco_events_total[10m]) == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Falco has stopped detecting events"
+            description: "No Falco events in the last 15 minutes. Falco may be crashed or misconfigured."
+
+        # Alert on high rate of critical-priority Falco events
+        - alert: FalcoCriticalEventsHigh
+          expr: |
+            sum(rate(falco_events_total{priority="critical"}[5m])) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical Falco security events detected"
+            description: "Critical-priority Falco events are firing. Investigate immediately."
+
+        # Alert on high rate of any Falco events (noisy environment)
+        - alert: FalcoEventRateHigh
+          expr: |
+            sum(rate(falco_events_total[5m])) > 50
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High Falco event rate detected"
+            description: "Falco is generating >50 events/sec for 10+ minutes. May indicate an attack or noisy rules."
+
+        # Alert if Falco kernel drops are occurring
+        - alert: FalcoKernelDrops
+          expr: |
+            rate(falco_kernel_drops_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Falco is dropping kernel events"
+            description: "Falco kernel event drops detected. May need increased buffer size or resources."

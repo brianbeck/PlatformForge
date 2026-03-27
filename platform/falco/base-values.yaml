@@ -45,6 +45,18 @@ falco:
     enabled: false
     url: ""
 
+# Prometheus metrics
+# Falco exposes /metrics on port 8765 by default
+metrics:
+  enabled: true
+
+# ServiceMonitor for Prometheus Operator scraping
+serviceMonitor:
+  enabled: true
+  labels:
+    app.kubernetes.io/part-of: platformforge
+  interval: 30s
+
 # Falcosidekick integration (disabled by default, enable per-env)
 falcosidekick:
   enabled: false
@@ -82,6 +94,17 @@ customRules:
     # rules with unique names.
     # ============================================================
 
+    # --- Macro overrides for tuning (defined before rules that use them) ---
+
+    - macro: user_expected_terminal_shell_in_container_conditions
+      condition: >
+        (k8s.ns.name in ("kube-system"))
+      append: false
+
+    - macro: platformforge_system_namespaces
+      condition: >
+        (k8s.ns.name in ("kube-system", "argocd", "falco", "falco-stage", "falco-prod", "gatekeeper-system"))
+
     # --- Override: reduce noise from known-safe container activity ---
 
     - rule: Terminal shell in container
@@ -112,7 +135,7 @@ customRules:
              or fd.name startswith /etc/passwd
              or fd.name startswith /run/secrets
              or fd.name startswith /var/run/secrets/kubernetes.io)
-        and not proc.name in (kubelet, kube-proxy)
+        and not proc.name in ("kubelet", "kube-proxy")
       output: >
         Sensitive file read in container
         (file=%fd.name evt_type=%evt.type user=%user.name
@@ -127,7 +150,7 @@ customRules:
       condition: >
         outbound and container
         and not (fd.sport in (53, 80, 443, 8080, 8443, 6443))
-        and not (k8s.ns.name in (kube-system, falco, gatekeeper-system))
+        and not platformforge_system_namespaces
       output: >
         Unexpected outbound connection from container
         (connection=%fd.name sport=%fd.sport dport=%fd.dport
@@ -139,9 +162,9 @@ customRules:
       desc: Detect attempts to escalate privileges inside a container
       condition: >
         spawned_process and container
-        and (proc.name in (sudo, su, newgrp, sg)
-             or proc.name = setuid
-             or proc.name = setgid)
+        and (proc.name in ("sudo", "su", "newgrp", "sg")
+             or proc.name = "setuid"
+             or proc.name = "setgid")
       output: >
         Privilege escalation attempt in container
         (user=%user.name process=%proc.name parent=%proc.pname
@@ -153,7 +176,7 @@ customRules:
       desc: Detect known crypto mining processes or arguments
       condition: >
         spawned_process and container
-        and (proc.name in (xmrig, minerd, minergate-cli, cpuminer)
+        and (proc.name in ("xmrig", "minerd", "minergate-cli", "cpuminer")
              or proc.cmdline contains "stratum+tcp"
              or proc.cmdline contains "stratum+ssl"
              or proc.cmdline contains "cryptonight"
@@ -171,17 +194,10 @@ customRules:
       condition: >
         outbound and container
         and fd.sport = 6443
-        and not k8s.ns.name in (kube-system, argocd, falco, gatekeeper-system)
+        and not platformforge_system_namespaces
       output: >
         Container accessing K8s API server unexpectedly
         (namespace=%k8s.ns.name pod=%k8s.pod.name
         process=%proc.name command=%proc.cmdline connection=%fd.name)
       priority: NOTICE
       tags: [container, network, k8s_api, mitre_discovery]
-
-    # --- Macro overrides for tuning ---
-
-    - macro: user_expected_terminal_shell_in_container_conditions
-      condition: >
-        (k8s.ns.name in (kube-system))
-      append: false

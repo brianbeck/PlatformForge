@@ -1,0 +1,21 @@
+# Argo Events EventSource for Falco alerts via Falcosidekick webhook.
+# Falcosidekick POSTs JSON alert payloads to this endpoint.
+#
+# Prerequisites: Argo Events controller running in argo-events namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: falco-alerts
+  namespace: argo-events
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  service:
+    ports:
+      - port: 12000
+        targetPort: 12000
+  webhook:
+    falco:
+      port: "12000"
+      endpoint: /falco
+      method: POST

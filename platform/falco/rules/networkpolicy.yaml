@@ -1,0 +1,84 @@
+# NetworkPolicy for Falco namespace
+# Restricts traffic to/from Falco pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: falco-default-deny
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  # Default deny all - explicit rules below override
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: falco-allow-required
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: falco
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Prometheus to scrape /metrics
+    - ports:
+        - port: 8765
+          protocol: TCP
+  egress:
+    # DNS resolution
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Kubernetes API server (for metadata enrichment)
+    - ports:
+        - port: 6443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: falcosidekick-allow-required
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: falcosidekick
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Falco to send events to Falcosidekick
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: falco
+      ports:
+        - port: 2801
+          protocol: TCP
+  egress:
+    # DNS resolution
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow outbound HTTPS for webhook/alerting destinations
+    - ports:
+        - port: 443
+          protocol: TCP
+    # Allow outbound to Argo Events EventSource (if configured)
+    - ports:
+        - port: 12000
+          protocol: TCP

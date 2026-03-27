@@ -7,10 +7,9 @@ falco:
   # Only surface WARNING and above in prod to reduce noise
   priority: WARNING
 
-  # Enable HTTP output for alerting pipeline in prod
-  http_output:
-    enabled: true
-    url: "http://falcosidekick.falco-prod.svc.cluster.local:2801"
+  # HTTP output is handled by falcosidekick subchart, not manual URL.
+  # The Falco Helm chart automatically wires falco -> falcosidekick
+  # when falcosidekick.enabled is true.
 
 # Prod: larger resource allocation
 resources:
@@ -21,8 +20,16 @@ resources:
     cpu: "1"
     memory: 1Gi
 
+# Shorter scrape interval in prod for faster alerting
+serviceMonitor:
+  interval: 15s
+
 # Enable falcosidekick in prod for alert forwarding
 falcosidekick:
   enabled: true
   config:
     debug: false
+  # Webhook output for Argo Events integration
+  # Uncomment and set URL when Argo Events EventSource is deployed
+  # webhook:
+  #   address: "http://falco-eventsource-svc.argo-events.svc.cluster.local:12000/falco"

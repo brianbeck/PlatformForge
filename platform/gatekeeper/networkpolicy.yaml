@@ -1,0 +1,50 @@
+# NetworkPolicy for Gatekeeper namespace (gatekeeper-system)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gatekeeper-default-deny
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gatekeeper-allow-required
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gatekeeper
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow kube-apiserver to call the admission webhook
+    - ports:
+        - port: 8443
+          protocol: TCP
+    # Allow Prometheus to scrape /metrics
+    - ports:
+        - port: 8888
+          protocol: TCP
+  egress:
+    # DNS resolution
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Kubernetes API server (for audit, sync, watch)
+    - ports:
+        - port: 6443
+          protocol: TCP

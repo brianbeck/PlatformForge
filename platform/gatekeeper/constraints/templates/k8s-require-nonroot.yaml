@@ -42,21 +42,24 @@ spec:
           c := input.review.object.spec.initContainers[_]
         }
 
+        # Container-level checks (null-safe)
         has_nonroot_secctx(container) {
-          container.securityContext.runAsNonRoot == true
+          object.get(object.get(container, "securityContext", {}), "runAsNonRoot", false) == true
         }
 
         has_nonroot_secctx(container) {
-          container.securityContext.runAsUser > 0
+          object.get(object.get(container, "securityContext", {}), "runAsUser", 0) > 0
         }
 
-        # Also accept pod-level securityContext
+        # Pod-level checks (null-safe)
         has_nonroot_secctx(container) {
-          input.review.object.spec.securityContext.runAsNonRoot == true
+          pod_sc := object.get(input.review.object.spec, "securityContext", {})
+          object.get(pod_sc, "runAsNonRoot", false) == true
         }
 
         has_nonroot_secctx(container) {
-          input.review.object.spec.securityContext.runAsUser > 0
+          pod_sc := object.get(input.review.object.spec, "securityContext", {})
+          object.get(pod_sc, "runAsUser", 0) > 0
         }
 
         is_exempt(container) {

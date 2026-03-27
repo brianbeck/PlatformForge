@@ -1,0 +1,168 @@
+# kube-prometheus-stack base Helm values
+# Includes Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics,
+# and the Prometheus Operator (which processes ServiceMonitor/PrometheusRule CRDs).
+
+# --- Prometheus ---
+prometheus:
+  prometheusSpec:
+    # Retain metrics for 15 days by default
+    retention: 15d
+
+    # Scrape interval
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    # Select ALL ServiceMonitors and PrometheusRules regardless of labels.
+    # This ensures Falco and Gatekeeper ServiceMonitors are picked up
+    # without requiring a specific release label match.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+
+    # Storage -- use emptyDir by default, override with PVC in overlays
+    storageSpec: {}
+
+    # Remote write to external storage (uncomment and configure)
+    # remoteWrite:
+    #   - url: "https://your-remote-write-endpoint/api/v1/write"
+    #     basicAuth:
+    #       username:
+    #         name: remote-write-credentials
+    #         key: username
+    #       password:
+    #         name: remote-write-credentials
+    #         key: password
+
+  service:
+    type: ClusterIP
+
+# --- Alertmanager ---
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  # Default config -- override per environment with actual receivers
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+        - receiver: critical
+          matchers:
+            - severity = "critical"
+          continue: true
+    receivers:
+      - name: "null"
+      # Configure actual receivers per environment:
+      - name: critical
+    inhibit_rules:
+      - source_matchers:
+          - severity = "critical"
+        target_matchers:
+          - severity = "warning"
+        equal: [alertname, namespace]
+
+# --- Grafana ---
+grafana:
+  enabled: true
+
+  adminPassword: ""  # Auto-generated; retrieve from secret
+
+  service:
+    type: ClusterIP
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Sidecar picks up ConfigMaps with dashboards label
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+    datasources:
+      enabled: true
+      label: grafana_datasource
+
+  # Default data source is the in-cluster Prometheus
+  additionalDataSources: []
+
+# --- Node exporter ---
+nodeExporter:
+  enabled: true
+
+# --- kube-state-metrics ---
+kubeStateMetrics:
+  enabled: true
+
+# --- Prometheus Operator ---
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# --- Default rules ---
+# Enable the standard Kubernetes alerting rules
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: true
+    kubeSchedulerRecording: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true

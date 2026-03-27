@@ -28,14 +28,14 @@ spec:
         violation[{"msg": msg}] {
           container := input_containers[_]
           require_cpu
-          not container.resources.limits.cpu
+          not has_cpu_limit(container)
           msg := sprintf("Container <%v> has no CPU limit", [container.name])
         }
 
         violation[{"msg": msg}] {
           container := input_containers[_]
           require_memory
-          not container.resources.limits.memory
+          not has_memory_limit(container)
           msg := sprintf("Container <%v> has no memory limit", [container.name])
         }
 
@@ -47,10 +47,23 @@ spec:
           c := input.review.object.spec.initContainers[_]
         }
 
+        # Null-safe resource limit checks
+        has_cpu_limit(container) {
+          resources := object.get(container, "resources", {})
+          limits := object.get(resources, "limits", {})
+          limits.cpu
+        }
+
+        has_memory_limit(container) {
+          resources := object.get(container, "resources", {})
+          limits := object.get(resources, "limits", {})
+          limits.memory
+        }
+
         require_cpu {
-          object.get(input, ["parameters", "requireCPU"], true)
+          object.get(input, ["parameters", "requireCPU"], true) == true
         }
 
         require_memory {
-          object.get(input, ["parameters", "requireMemory"], true)
+          object.get(input, ["parameters", "requireMemory"], true) == true
         }

@@ -1,10 +1,8 @@
-# This kustomization exists so Argo CD can deploy additional
-# Falco rule ConfigMaps alongside the Helm chart.
-# Add new rule files here as needed.
+# Additional Falco manifests deployed alongside the Helm chart.
+# Argo CD syncs this directory as a separate source.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources: []
-# Add additional rule ConfigMaps here if needed beyond what
-# the Helm chart's customRules handles. For most use cases,
-# putting rules in base-values.yaml customRules is simpler.
+resources:
+  - prometheusrules.yaml
+  - networkpolicy.yaml

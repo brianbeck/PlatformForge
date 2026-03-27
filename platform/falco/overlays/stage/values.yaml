@@ -22,3 +22,7 @@ falcosidekick:
   enabled: true
   config:
     debug: true
+  # Webhook output for Argo Events integration (optional)
+  # Uncomment and set URL when Argo Events EventSource is deployed
+  # webhook:
+  #   address: "http://falco-eventsource-svc.argo-events.svc.cluster.local:12000/falco"
