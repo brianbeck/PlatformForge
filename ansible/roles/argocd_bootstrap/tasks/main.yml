@@ -1,6 +1,52 @@
 ---
 # Install and configure Argo CD via Helm, then apply AppProjects and Applications.
 
+# --- Prompt for and validate repo URL if still set to placeholder ---
+
+- name: Check if repo URL needs configuration
+  ansible.builtin.set_fact:
+    repo_needs_config: "{{ 'YOUR_ORG' in platformforge_repo_url }}"
+
+- name: Prompt for PlatformForge Git repository URL
+  when: repo_needs_config | bool
+  ansible.builtin.pause:
+    prompt: |
+
+      Enter your PlatformForge Git repository URL.
+      This is the repo Argo CD will watch for changes.
+
+      Examples:
+        https://github.com/myorg/PlatformForge.git
+        git@github.com:myorg/PlatformForge.git
+
+      Repository URL
+  register: repo_url_input
+
+- name: Set repo URL from user input
+  when: repo_needs_config | bool
+  ansible.builtin.set_fact:
+    platformforge_repo_url: "{{ repo_url_input.user_input | trim }}"
+
+- name: Validate repo URL is not empty
+  ansible.builtin.assert:
+    that:
+      - platformforge_repo_url | length > 0
+      - "'YOUR_ORG' not in platformforge_repo_url"
+    fail_msg: "Repository URL cannot be empty or contain YOUR_ORG placeholder."
+
+- name: Validate repo is reachable
+  ansible.builtin.command:
+    cmd: "git ls-remote {{ platformforge_repo_url }}"
+  register: repo_check
+  changed_when: false
+  failed_when: repo_check.rc != 0
+
+- name: Display configured repo URL
+  ansible.builtin.debug:
+    msg: "Repository: {{ platformforge_repo_url }} (revision: {{ platformforge_repo_revision }})"
+
+# --- Add Helm repos ---
+
 - name: Add Argo CD Helm repository
   ansible.builtin.command:
     cmd: "helm repo add argo {{ argocd_helm_repo }}"
@@ -13,9 +59,9 @@
     cmd: helm repo update
   changed_when: false
 
-# --- Compute namespace and server values based on environment model ---
+# --- Compute namespace values based on environment model ---
 
-- name: Set namespace and server facts for Model A (single cluster)
+- name: Set namespace facts for Model A (single cluster)
   when: single_cluster | bool
   ansible.builtin.set_fact:
     falco_stage_namespace: "falco-stage"
@@ -24,10 +70,8 @@
     gatekeeper_prod_namespace: "gatekeeper-system"
     monitoring_stage_namespace: "monitoring-stage"
     monitoring_prod_namespace: "monitoring-prod"
-    stage_destination_server: "https://kubernetes.default.svc"
-    prod_destination_server: "https://kubernetes.default.svc"
 
-- name: Set namespace and server facts for Model B (multi-cluster)
+- name: Set namespace facts for Model B (multi-cluster)
   when: multi_cluster | bool
   ansible.builtin.set_fact:
     falco_stage_namespace: "falco"
@@ -36,75 +80,37 @@
     gatekeeper_prod_namespace: "gatekeeper-system"
     monitoring_stage_namespace: "monitoring"
     monitoring_prod_namespace: "monitoring"
-    stage_destination_server: "https://kubernetes.default.svc"
-    prod_destination_server: "https://kubernetes.default.svc"
 
-# --- Patch Application manifests for environment model ---
-# Uses sed to update destination namespace/server in Application YAMLs.
-# This avoids requiring yq as a dependency.
+# --- Template all Argo CD manifests ---
 
-- name: Patch stage Falco Application namespace
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/apps/stage/falco.yml"
-    regexp: 'namespace: falco-stage$'
-    replace: "namespace: {{ falco_stage_namespace }}"
-  when: falco_stage_namespace != "falco-stage"
+- name: Template AppProjects
+  ansible.builtin.template:
+    src: "projects/{{ item }}.j2"
+    dest: "{{ playbook_dir }}/../../argocd/projects/{{ item }}"
+    mode: "0644"
+  loop:
+    - platform-stage.yml
+    - platform-prod.yml
 
-- name: Patch prod Falco Application namespace
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/apps/prod/falco.yml"
-    regexp: 'namespace: falco-prod$'
-    replace: "namespace: {{ falco_prod_namespace }}"
-  when: falco_prod_namespace != "falco-prod"
+- name: Template stage Applications
+  ansible.builtin.template:
+    src: "apps/stage/{{ item }}.j2"
+    dest: "{{ playbook_dir }}/../../argocd/apps/stage/{{ item }}"
+    mode: "0644"
+  loop:
+    - falco.yml
+    - gatekeeper.yml
+    - prometheus-stack.yml
 
-- name: Patch stage Gatekeeper Application namespace
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/apps/stage/gatekeeper.yml"
-    regexp: 'namespace: gatekeeper-system$'
-    replace: "namespace: {{ gatekeeper_stage_namespace }}"
-  when: gatekeeper_stage_namespace != "gatekeeper-system"
-
-- name: Patch AppProject destination namespaces (stage)
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
-    regexp: 'namespace: "falco-stage"'
-    replace: 'namespace: "{{ falco_stage_namespace }}"'
-  when: falco_stage_namespace != "falco-stage"
-
-- name: Patch AppProject destination namespaces (prod)
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
-    regexp: 'namespace: "falco-prod"'
-    replace: 'namespace: "{{ falco_prod_namespace }}"'
-  when: falco_prod_namespace != "falco-prod"
-
-- name: Patch stage Prometheus Application namespace
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/apps/stage/prometheus-stack.yml"
-    regexp: 'namespace: monitoring-stage$'
-    replace: "namespace: {{ monitoring_stage_namespace }}"
-  when: monitoring_stage_namespace != "monitoring-stage"
-
-- name: Patch prod Prometheus Application namespace
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/apps/prod/prometheus-stack.yml"
-    regexp: 'namespace: monitoring-prod$'
-    replace: "namespace: {{ monitoring_prod_namespace }}"
-  when: monitoring_prod_namespace != "monitoring-prod"
-
-- name: Patch AppProject monitoring namespace (stage)
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
-    regexp: 'namespace: "monitoring-stage"'
-    replace: 'namespace: "{{ monitoring_stage_namespace }}"'
-  when: monitoring_stage_namespace != "monitoring-stage"
-
-- name: Patch AppProject monitoring namespace (prod)
-  ansible.builtin.replace:
-    path: "{{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
-    regexp: 'namespace: "monitoring-prod"'
-    replace: 'namespace: "{{ monitoring_prod_namespace }}"'
-  when: monitoring_prod_namespace != "monitoring-prod"
+- name: Template prod Applications
+  ansible.builtin.template:
+    src: "apps/prod/{{ item }}.j2"
+    dest: "{{ playbook_dir }}/../../argocd/apps/prod/{{ item }}"
+    mode: "0644"
+  loop:
+    - falco.yml
+    - gatekeeper.yml
+    - prometheus-stack.yml
 
 # --- Install Argo CD to stage context ---
 
@@ -192,24 +198,20 @@
 
 # --- Dry-run validation before applying ---
 
-- name: Validate stage AppProject (dry-run)
+- name: Validate stage manifests (dry-run)
   ansible.builtin.command:
-    cmd: "kubectl --context {{ stage_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+    cmd: "kubectl --context {{ stage_context }} apply --dry-run=client -f {{ item }}"
+  loop:
+    - "{{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+    - "{{ playbook_dir }}/../../argocd/apps/stage/"
   changed_when: false
 
-- name: Validate stage Applications (dry-run)
+- name: Validate prod manifests (dry-run)
   ansible.builtin.command:
-    cmd: "kubectl --context {{ stage_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/apps/stage/"
-  changed_when: false
-
-- name: Validate prod AppProject (dry-run)
-  ansible.builtin.command:
-    cmd: "kubectl --context {{ prod_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
-  changed_when: false
-
-- name: Validate prod Applications (dry-run)
-  ansible.builtin.command:
-    cmd: "kubectl --context {{ prod_context }} apply --dry-run=client -f {{ playbook_dir }}/../../argocd/apps/prod/"
+    cmd: "kubectl --context {{ prod_context }} apply --dry-run=client -f {{ item }}"
+  loop:
+    - "{{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
+    - "{{ playbook_dir }}/../../argocd/apps/prod/"
   changed_when: false
 
 # --- Apply AppProjects ---

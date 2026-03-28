@@ -22,17 +22,15 @@ spec:
         valueFiles:
           - $values/platform/prometheus-stack/base-values.yaml
           - $values/platform/prometheus-stack/overlays/stage/values.yaml
-        # Skip CRD installation via Helm -- managed separately for safety
         skipCrds: false
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       ref: values
 
   destination:
-    # MANAGED BY BOOTSTRAP: updated based on environment model
     server: https://kubernetes.default.svc
-    namespace: monitoring-stage
+    namespace: {{ monitoring_stage_namespace }}
 
   syncPolicy:
     automated:
@@ -41,7 +39,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      # CRDs can be large; server-side apply handles them better
       - RespectIgnoreDifferences=true
     retry:
       limit: 5
@@ -50,7 +47,6 @@ spec:
         factor: 2
         maxDuration: 5m
 
-  # Ignore known-noisy diffs from the prometheus-stack chart
   ignoreDifferences:
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration

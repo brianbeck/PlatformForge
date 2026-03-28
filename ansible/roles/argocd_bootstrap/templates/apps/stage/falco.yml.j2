@@ -1,19 +1,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: falco-prod
+  name: falco-stage
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
-    platformforge/env: prod
+    platformforge/env: stage
     platformforge/service: falco
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
     notifications.argoproj.io/subscribe.on-sync-failed: ""
-    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
 spec:
-  project: platform-prod
+  project: platform-stage
 
   sources:
     - repoURL: https://falcosecurity.github.io/charts
@@ -22,23 +21,24 @@ spec:
       helm:
         valueFiles:
           - $values/platform/falco/base-values.yaml
-          - $values/platform/falco/overlays/prod/values.yaml
+          - $values/platform/falco/overlays/stage/values.yaml
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       ref: values
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       path: platform/falco/rules
 
   destination:
-    # MANAGED BY BOOTSTRAP: updated based on environment model
     server: https://kubernetes.default.svc
-    namespace: falco-prod
+    namespace: {{ falco_stage_namespace }}
 
-  # Prod: manual sync only - no automated sync
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true

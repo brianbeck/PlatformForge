@@ -6,27 +6,20 @@ metadata:
 spec:
   description: PlatformForge stage environment platform services
 
-  # Only allow deploying from this repository
   sourceRepos:
-    - "https://github.com/YOUR_ORG/PlatformForge.git"
+    - "{{ platformforge_repo_url }}"
     - "https://falcosecurity.github.io/charts"
     - "https://open-policy-agent.github.io/gatekeeper/charts"
     - "https://prometheus-community.github.io/helm-charts"
 
-  # Allowed destination namespaces for stage
   destinations:
     - server: "https://kubernetes.default.svc"
-      namespace: "falco-stage"
+      namespace: "{{ falco_stage_namespace }}"
     - server: "https://kubernetes.default.svc"
-      namespace: "gatekeeper-system"
+      namespace: "{{ gatekeeper_stage_namespace }}"
     - server: "https://kubernetes.default.svc"
-      namespace: "monitoring-stage"
-    - server: "https://kubernetes.default.svc"
-      namespace: "falco"
-    - server: "https://kubernetes.default.svc"
-      namespace: "monitoring"
+      namespace: "{{ monitoring_stage_namespace }}"
 
-  # Cluster-scoped resources needed by platform services
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -45,7 +38,6 @@ spec:
     - group: monitoring.coreos.com
       kind: PrometheusRule
 
-  # Scoped namespace resources -- only what platform services need
   namespaceResourceWhitelist:
     - group: ""
       kind: ConfigMap
@@ -88,6 +80,5 @@ spec:
     - group: policy
       kind: PodDisruptionBudget
 
-  # Prevent accidental deletion of important resources
   orphanedResources:
     warn: true

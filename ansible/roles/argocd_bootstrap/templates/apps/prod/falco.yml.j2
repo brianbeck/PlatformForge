@@ -1,51 +1,42 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: falco-stage
+  name: falco-prod
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
-    platformforge/env: stage
+    platformforge/env: prod
     platformforge/service: falco
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
     notifications.argoproj.io/subscribe.on-sync-failed: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
 spec:
-  project: platform-stage
+  project: platform-prod
 
-  # Multi-source: Helm chart + values from this Git repo
   sources:
-    # Source 1: Falco Helm chart
     - repoURL: https://falcosecurity.github.io/charts
       chart: falco
       targetRevision: "4.16.3"
       helm:
         valueFiles:
           - $values/platform/falco/base-values.yaml
-          - $values/platform/falco/overlays/stage/values.yaml
+          - $values/platform/falco/overlays/prod/values.yaml
 
-    # Source 2: This Git repo (for values files reference)
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       ref: values
 
-    # Source 3: Additional manifests (NetworkPolicies, PrometheusRules)
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       path: platform/falco/rules
 
   destination:
-    # MANAGED BY BOOTSTRAP: updated based on environment model
-    # Model A: namespace falco-stage, server https://kubernetes.default.svc
-    # Model B: namespace falco, server https://kubernetes.default.svc
     server: https://kubernetes.default.svc
-    namespace: falco-stage
+    namespace: {{ falco_prod_namespace }}
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true

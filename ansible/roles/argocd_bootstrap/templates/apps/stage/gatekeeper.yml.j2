@@ -1,19 +1,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: gatekeeper-prod
+  name: gatekeeper-stage
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
-    platformforge/env: prod
+    platformforge/env: stage
     platformforge/service: gatekeeper
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
     notifications.argoproj.io/subscribe.on-sync-failed: ""
-    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
 spec:
-  project: platform-prod
+  project: platform-stage
 
   sources:
     - repoURL: https://open-policy-agent.github.io/gatekeeper/charts
@@ -22,26 +21,28 @@ spec:
       helm:
         valueFiles:
           - $values/platform/gatekeeper/base-values.yaml
-          - $values/platform/gatekeeper/overlays/prod/values.yaml
+          - $values/platform/gatekeeper/overlays/stage/values.yaml
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       ref: values
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       path: platform/gatekeeper/constraints/templates
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
-      path: platform/gatekeeper/constraints/prod
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
+      path: platform/gatekeeper/constraints/stage
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: gatekeeper-system
+    namespace: {{ gatekeeper_stage_namespace }}
 
-  # Prod: manual sync only
   syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true

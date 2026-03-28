@@ -7,24 +7,19 @@ spec:
   description: PlatformForge prod environment platform services
 
   sourceRepos:
-    - "https://github.com/YOUR_ORG/PlatformForge.git"
+    - "{{ platformforge_repo_url }}"
     - "https://falcosecurity.github.io/charts"
     - "https://open-policy-agent.github.io/gatekeeper/charts"
     - "https://prometheus-community.github.io/helm-charts"
 
   destinations:
     - server: "https://kubernetes.default.svc"
-      namespace: "falco-prod"
+      namespace: "{{ falco_prod_namespace }}"
     - server: "https://kubernetes.default.svc"
-      namespace: "gatekeeper-system"
+      namespace: "{{ gatekeeper_prod_namespace }}"
     - server: "https://kubernetes.default.svc"
-      namespace: "monitoring-prod"
-    - server: "https://kubernetes.default.svc"
-      namespace: "falco"
-    - server: "https://kubernetes.default.svc"
-      namespace: "monitoring"
+      namespace: "{{ monitoring_prod_namespace }}"
 
-  # Cluster-scoped resources needed by platform services
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -43,7 +38,6 @@ spec:
     - group: monitoring.coreos.com
       kind: PrometheusRule
 
-  # Scoped namespace resources
   namespaceResourceWhitelist:
     - group: ""
       kind: ConfigMap
@@ -89,7 +83,6 @@ spec:
   orphanedResources:
     warn: true
 
-  # Prod-specific: deny automated sync for all apps in this project
   syncWindows:
     - kind: deny
       schedule: "* * * * *"

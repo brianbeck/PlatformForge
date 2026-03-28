@@ -22,6 +22,7 @@
       loop:
         - kubectl
         - helm
+        - git
       changed_when: false
       register: tool_check
       failed_when: tool_check.rc != 0
@@ -34,10 +35,11 @@
           ================================================
 
            This playbook will:
-            1. Ask which environment model you are using
-            2. Discover and verify your kubectl contexts
-            3. Install Argo CD
-            4. Configure AppProjects and Applications
+            1. Ask for your Git repository URL
+            2. Ask which environment model you are using
+            3. Discover and verify your kubectl contexts
+            4. Install Argo CD
+            5. Generate and apply AppProjects and Applications
                for Falco, OPA Gatekeeper, and Prometheus
 
           ================================================
@@ -62,8 +64,8 @@
              - kube-prometheus-stack (stage + prod)
 
            Next steps:
-             1. Commit environments.yml if you want to
-                track your environment config in Git
+             1. Commit the generated argocd/ manifests:
+                git add argocd/ && git commit -m "Bootstrap: generate Argo CD manifests" && git push
              2. Access Argo CD UI (see instructions above)
              3. Verify Applications are syncing
 

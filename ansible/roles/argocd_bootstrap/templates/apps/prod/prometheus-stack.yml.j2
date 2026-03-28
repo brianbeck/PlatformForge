@@ -25,16 +25,14 @@ spec:
           - $values/platform/prometheus-stack/overlays/prod/values.yaml
         skipCrds: false
 
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       ref: values
 
   destination:
-    # MANAGED BY BOOTSTRAP: updated based on environment model
     server: https://kubernetes.default.svc
-    namespace: monitoring-prod
+    namespace: {{ monitoring_prod_namespace }}
 
-  # Prod: manual sync only
   syncPolicy:
     syncOptions:
       - CreateNamespace=true

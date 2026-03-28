@@ -1,52 +1,46 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: gatekeeper-stage
+  name: gatekeeper-prod
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
-    platformforge/env: stage
+    platformforge/env: prod
     platformforge/service: gatekeeper
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
     notifications.argoproj.io/subscribe.on-sync-failed: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
 spec:
-  project: platform-stage
+  project: platform-prod
 
   sources:
-    # Source 1: Gatekeeper Helm chart
     - repoURL: https://open-policy-agent.github.io/gatekeeper/charts
       chart: gatekeeper
       targetRevision: "3.18.2"
       helm:
         valueFiles:
           - $values/platform/gatekeeper/base-values.yaml
-          - $values/platform/gatekeeper/overlays/stage/values.yaml
+          - $values/platform/gatekeeper/overlays/prod/values.yaml
 
-    # Source 2: This Git repo (for values files)
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       ref: values
 
-    # Source 3: Shared ConstraintTemplates (env-agnostic)
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
       path: platform/gatekeeper/constraints/templates
 
-    # Source 4: Stage-specific Constraints
-    - repoURL: https://github.com/YOUR_ORG/PlatformForge.git
-      targetRevision: main
-      path: platform/gatekeeper/constraints/stage
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
+      path: platform/gatekeeper/constraints/prod
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: gatekeeper-system
+    namespace: {{ gatekeeper_prod_namespace }}
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
