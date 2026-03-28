@@ -1,4 +1,4 @@
-# kube-prometheus-stack base Helm values
+# Observability Stack base Helm values (kube-prometheus-stack)
 # Includes Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics,
 # and the Prometheus Operator (which processes ServiceMonitor/PrometheusRule CRDs).
 

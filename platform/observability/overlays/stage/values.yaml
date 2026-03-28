@@ -1,4 +1,4 @@
-# kube-prometheus-stack stage overlay
+# Observability Stack stage overlay
 
 prometheus:
   prometheusSpec:

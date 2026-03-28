@@ -1,12 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: prometheus-stack-stage
+  name: observability-stage
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
     platformforge/env: stage
-    platformforge/service: prometheus-stack
+    platformforge/service: observability
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
@@ -20,8 +20,8 @@ spec:
       targetRevision: "82.15.1"
       helm:
         valueFiles:
-          - $values/platform/prometheus-stack/base-values.yaml
-          - $values/platform/prometheus-stack/overlays/stage/values.yaml
+          - $values/platform/observability/base-values.yaml
+          - $values/platform/observability/overlays/stage/values.yaml
         skipCrds: false
 
     - repoURL: {{ platformforge_repo_url }}

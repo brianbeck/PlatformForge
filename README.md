@@ -86,7 +86,7 @@ PlatformForge/
     │   └── overlays/
     │       ├── stage/values.yaml
     │       └── prod/values.yaml
-    ├── prometheus-stack/
+    ├── observability/
     │   ├── base-values.yaml     # Prometheus, Alertmanager, Grafana
     │   └── overlays/
     │       ├── stage/values.yaml
@@ -111,7 +111,7 @@ PlatformForge/
 - `ansible` installed (`pip install ansible`)
 - `git` installed
 - Git repository accessible from your cluster(s)
-- Prometheus Operator is deployed as part of this repo (kube-prometheus-stack)
+- Prometheus Operator is deployed as part of this repo (Observability Stack)
 - For Falco -> Argo Workflows: Argo Events and Argo Workflows installed (optional)
 
 ## Quick Start
@@ -224,7 +224,7 @@ Kubernetes admission controller for policy enforcement. Uses ConstraintTemplates
 
 **Adding policies:** Create a new ConstraintTemplate in `platform/gatekeeper/constraints/templates/`, then add corresponding Constraints in `constraints/stage/` and `constraints/prod/`. Use sync-wave annotations (`"1"` for templates, `"2"` for constraints) to ensure correct ordering.
 
-### kube-prometheus-stack
+### Observability Stack (kube-prometheus-stack)
 
 Full monitoring stack: Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics, and the Prometheus Operator.
 
@@ -236,15 +236,15 @@ Full monitoring stack: Prometheus, Alertmanager, Grafana, node-exporter, kube-st
 - Stage: 7-day retention, ephemeral storage, smaller footprint
 - Prod: 30-day retention, 50Gi PVC, 2 Prometheus replicas, 2 Alertmanager replicas
 
-**Configuring alert destinations:** Edit `platform/prometheus-stack/overlays/prod/values.yaml` and uncomment the Alertmanager `slack_configs` section (or add PagerDuty, email, etc.).
+**Configuring alert destinations:** Edit `platform/observability/overlays/prod/values.yaml` and uncomment the Alertmanager `slack_configs` section (or add PagerDuty, email, etc.).
 
 **Remote write:** For cross-cluster visibility and long-term retention, uncomment the `remoteWrite` section in the prod overlay and point it at your Thanos, Mimir, or Grafana Cloud endpoint.
 
 **Accessing Grafana:**
 ```bash
-kubectl -n <monitoring-namespace> port-forward svc/prometheus-stack-grafana 3000:80
+kubectl -n <monitoring-namespace> port-forward svc/observability-grafana 3000:80
 # Default user: admin, password from secret:
-kubectl -n <monitoring-namespace> get secret prometheus-stack-grafana \
+kubectl -n <monitoring-namespace> get secret observability-grafana \
   -o jsonpath='{.data.admin-password}' | base64 -d
 ```
 
@@ -377,7 +377,7 @@ Notifications require a configured service (Slack, webhook, etc.) in the Argo CD
 - The Git repo is network-accessible from the cluster(s) for Argo CD to poll
 - No existing Argo CD installation on the target cluster(s)
 - Kernel 5.8+ with BTF for Falco modern eBPF driver. ClusterForge default images meet this requirement. If running on a non-ClusterForge cluster with an older kernel, change `driver.kind` to `kmod` or `ebpf` in `platform/falco/base-values.yaml`
-- kube-prometheus-stack deploys the Prometheus Operator, which processes ServiceMonitor and PrometheusRule CRDs from Falco and Gatekeeper. Sync-wave annotations ensure prometheus-stack (wave 0) deploys before Falco and Gatekeeper (wave 1), so CRDs exist when needed
+- Observability Stack deploys the Prometheus Operator, which processes ServiceMonitor and PrometheusRule CRDs from Falco and Gatekeeper. Sync-wave annotations ensure observability (wave 0) deploys before Falco and Gatekeeper (wave 1), so CRDs exist when needed
 - ClusterForge clusters use `local-path` as the default StorageClass (node-local, no replication). Prometheus prod PVCs will work but data is tied to a single node. For HA, consider adding Longhorn or Rook/Ceph
 
 **Tradeoffs:**
@@ -392,7 +392,7 @@ Notifications require a configured service (Slack, webhook, etc.) in the Argo CD
 1. **Add an App-of-Apps pattern:** Create a root Application that manages all other Applications, so Argo CD fully manages itself after bootstrap.
 2. **Migrate to ApplicationSets:** Once you have more services or environments, use ApplicationSets with Git directory generators.
 3. **Secret management:** Integrate Sealed Secrets, SOPS, or External Secrets Operator for managing sensitive values.
-4. **Add more platform services:** cert-manager, external-dns, ingress-nginx, monitoring stack (kube-prometheus-stack).
+4. **Add more platform services:** cert-manager, external-dns, ingress-nginx, monitoring stack.
 5. **CI validation:** Add a CI pipeline that runs `helm template`, `kubeconform`, and `opa test` on changes.
 6. **Argo CD SSO:** Configure Argo CD with OIDC/Dex for team access instead of the admin password.
 7. **Falcosidekick destinations:** Configure alert routing to Slack, PagerDuty, or your SIEM via Falcosidekick config.

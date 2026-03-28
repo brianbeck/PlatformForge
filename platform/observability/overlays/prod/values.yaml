@@ -1,4 +1,4 @@
-# kube-prometheus-stack prod overlay
+# Observability Stack prod overlay
 
 prometheus:
   prometheusSpec:
