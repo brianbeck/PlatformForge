@@ -19,6 +19,8 @@ spec:
       namespace: "gatekeeper-system"
     - server: "https://kubernetes.default.svc"
       namespace: "monitoring"
+    - server: "https://kubernetes.default.svc"
+      namespace: "kube-system"
 
   clusterResourceWhitelist:
     - group: ""
@@ -37,6 +39,8 @@ spec:
       kind: MutatingWebhookConfiguration
     - group: monitoring.coreos.com
       kind: PrometheusRule
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
 
   namespaceResourceWhitelist:
     - group: ""
