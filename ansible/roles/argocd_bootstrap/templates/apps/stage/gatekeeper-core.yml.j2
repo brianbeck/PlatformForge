@@ -31,6 +31,12 @@ spec:
     server: https://kubernetes.default.svc
     namespace: {{ gatekeeper_stage_namespace }}
 
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - .status.terminatingReplicas
+
   syncPolicy:
     automated:
       prune: true

@@ -36,6 +36,12 @@ spec:
     server: https://kubernetes.default.svc
     namespace: {{ falco_prod_namespace }}
 
+  ignoreDifferences:
+    - group: apps
+      kind: DaemonSet
+      jqPathExpressions:
+        - .status.terminatingReplicas
+
   syncPolicy:
     syncOptions:
       - CreateNamespace=true

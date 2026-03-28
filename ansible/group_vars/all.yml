@@ -3,7 +3,7 @@
 
 # Argo CD
 argocd_namespace: argocd
-argocd_chart_version: "7.7.12"
+argocd_chart_version: "9.4.17"
 argocd_helm_repo: https://argoproj.github.io/argo-helm
 
 # Git repository (update to your fork/clone URL)
