@@ -14,6 +14,8 @@
 - name: Bootstrap PlatformForge
   hosts: localhost
   gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
 
   pre_tasks:
     - name: Verify required tools are installed
