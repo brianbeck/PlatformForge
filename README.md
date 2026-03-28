@@ -120,8 +120,8 @@ PlatformForge/
 
 ```bash
 git clone <your-platformforge-repo-url>
-cd PlatformForge/ansible
-ansible-playbook playbooks/bootstrap.yml
+cd PlatformForge
+cd ansible && ansible-playbook playbooks/bootstrap.yml
 ```
 
 The playbook will:
