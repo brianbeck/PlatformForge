@@ -79,23 +79,23 @@ configs:
   # Notifications configuration
   notifications:
     enabled: true
-    # Templates for alert messages
+    # Templates for alert messages (Go template syntax escaped for Jinja2)
     templates:
       template.app-health-degraded: |
         message: |
-          Application {{`{{.app.metadata.name}}`}} health is {{`{{.app.status.health.status}}`}}.
-          Sync status: {{`{{.app.status.sync.status}}`}}
-          {{`{{if .app.status.health.message}}`}}Message: {{`{{.app.status.health.message}}`}}{{`{{end}}`}}
+          Application {{ '{{' }}.app.metadata.name{{ '}}' }} health is {{ '{{' }}.app.status.health.status{{ '}}' }}.
+          Sync status: {{ '{{' }}.app.status.sync.status{{ '}}' }}
+          {{ '{{' }}if .app.status.health.message{{ '}}' }}Message: {{ '{{' }}.app.status.health.message{{ '}}' }}{{ '{{' }}end{{ '}}' }}
       template.app-sync-failed: |
         message: |
-          Application {{`{{.app.metadata.name}}`}} sync failed.
-          {{`{{if .app.status.operationState}}`}}
-          Error: {{`{{.app.status.operationState.message}}`}}
-          {{`{{end}}`}}
+          Application {{ '{{' }}.app.metadata.name{{ '}}' }} sync failed.
+          {{ '{{' }}if .app.status.operationState{{ '}}' }}
+          Error: {{ '{{' }}.app.status.operationState.message{{ '}}' }}
+          {{ '{{' }}end{{ '}}' }}
       template.app-sync-succeeded: |
         message: |
-          Application {{`{{.app.metadata.name}}`}} synced successfully.
-          Revision: {{`{{.app.status.sync.revision}}`}}
+          Application {{ '{{' }}.app.metadata.name{{ '}}' }} synced successfully.
+          Revision: {{ '{{' }}.app.status.sync.revision{{ '}}' }}
 
     # Triggers define when notifications fire
     triggers:
