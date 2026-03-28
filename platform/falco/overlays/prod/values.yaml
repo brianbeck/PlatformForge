@@ -1,16 +1,6 @@
 # Falco prod overlay
 # Layered on top of base-values.yaml
 
-falco:
-  log_level: info
-
-  # Only surface WARNING and above in prod to reduce noise
-  priority: WARNING
-
-  # HTTP output is handled by falcosidekick subchart, not manual URL.
-  # The Falco Helm chart automatically wires falco -> falcosidekick
-  # when falcosidekick.enabled is true.
-
 # Prod: larger resource allocation
 resources:
   requests:
@@ -19,10 +9,6 @@ resources:
   limits:
     cpu: "1"
     memory: 1Gi
-
-# Shorter scrape interval in prod for faster alerting
-serviceMonitor:
-  interval: 15s
 
 # Enable falcosidekick in prod for alert forwarding
 falcosidekick:

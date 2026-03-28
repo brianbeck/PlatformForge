@@ -1,13 +1,6 @@
 # Falco stage overlay
 # Layered on top of base-values.yaml
 
-falco:
-  # More verbose logging in stage for debugging
-  log_level: debug
-
-  # Lower priority threshold in stage to surface more events
-  priority: DEBUG
-
 # Stage: smaller resource footprint
 resources:
   requests:

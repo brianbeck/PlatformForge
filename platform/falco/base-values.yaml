@@ -11,55 +11,15 @@ driver:
 
 collectors:
   # Enable container runtime metadata enrichment
-  containerd:
+  # In Falco 8.x, collectors use the container plugin under the hood
+  enabled: true
+  containerEngine:
     enabled: true
-  docker:
-    enabled: false
-  cri:
-    enabled: true
-
-falco:
-  # Output formatting
-  json_output: true
-  json_include_output_property: true
-  log_stderr: true
-  log_syslog: false
-  log_level: info
-
-  # Buffered outputs for performance
-  buffered_outputs: true
-  outputs_queue:
-    capacity: 0
-
-  # Rule loading order: default rules, then custom overrides
-  rules_files:
-    - /etc/falco/falco_rules.yaml
-    - /etc/falco/falco_rules.local.yaml
-    - /etc/falco/rules.d
-
-  # gRPC output for integration with sidekick/UI
-  grpc:
-    enabled: true
-    bind_address: "unix:///run/falco/falco.sock"
-  grpc_output:
-    enabled: true
-
-  # HTTP output (for falcosidekick or webhook integration)
-  http_output:
-    enabled: false
-    url: ""
 
 # Prometheus metrics
-# Falco exposes /metrics on port 8765 by default
+# Falco 8.x moved metrics to a top-level key (no longer under falco.)
 metrics:
   enabled: true
-
-# ServiceMonitor for Prometheus Operator scraping
-serviceMonitor:
-  enabled: true
-  labels:
-    app.kubernetes.io/part-of: platformforge
-  interval: 30s
 
 # Falcosidekick integration (disabled by default, enable per-env)
 falcosidekick:
@@ -124,7 +84,8 @@ customRules:
         (evt_type=%evt.type user=%user.name user_uid=%user.uid user_loginuid=%user.loginuid
         process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname
         command=%proc.cmdline terminal=%proc.tty exe_flags=%evt.arg.flags
-        %container.info)
+        container_id=%container.id container_name=%container.name
+        k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
       priority: WARNING
       tags: [container, shell, mitre_execution]
       append: false
@@ -143,7 +104,9 @@ customRules:
       output: >
         Sensitive file read in container
         (file=%fd.name evt_type=%evt.type user=%user.name
-        process=%proc.name command=%proc.cmdline %container.info)
+        process=%proc.name command=%proc.cmdline
+        container_id=%container.id container_name=%container.name
+        k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
       priority: WARNING
       tags: [container, filesystem, mitre_credential_access]
 
@@ -157,8 +120,10 @@ customRules:
         and not platformforge_system_namespaces
       output: >
         Unexpected outbound connection from container
-        (connection=%fd.name sport=%fd.sport dport=%fd.dport
-        process=%proc.name command=%proc.cmdline %container.info)
+        (connection=%fd.name lport=%fd.lport rport=%fd.rport
+        process=%proc.name command=%proc.cmdline
+        container_id=%container.id container_name=%container.name
+        k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
       priority: NOTICE
       tags: [container, network, mitre_command_and_control]
 
@@ -172,7 +137,9 @@ customRules:
       output: >
         Privilege escalation attempt in container
         (user=%user.name process=%proc.name parent=%proc.pname
-        command=%proc.cmdline %container.info)
+        command=%proc.cmdline
+        container_id=%container.id container_name=%container.name
+        k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
       priority: WARNING
       tags: [container, process, mitre_privilege_escalation]
 
@@ -187,7 +154,9 @@ customRules:
              or proc.cmdline contains "-o pool.")
       output: >
         Crypto mining activity detected in container
-        (process=%proc.name command=%proc.cmdline %container.info)
+        (process=%proc.name command=%proc.cmdline
+        container_id=%container.id container_name=%container.name
+        k8s_ns=%k8s.ns.name k8s_pod=%k8s.pod.name)
       priority: CRITICAL
       tags: [container, process, mitre_resource_hijacking, cryptomining]
 
