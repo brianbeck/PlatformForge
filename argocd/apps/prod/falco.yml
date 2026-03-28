@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: falco-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    platformforge/env: prod
+    platformforge/service: falco
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    notifications.argoproj.io/subscribe.on-health-degraded: ""
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
+spec:
+  project: platform-prod
+
+  sources:
+    - repoURL: https://falcosecurity.github.io/charts
+      chart: falco
+      targetRevision: "4.16.3"
+      helm:
+        valueFiles:
+          - $values/platform/falco/base-values.yaml
+          - $values/platform/falco/overlays/prod/values.yaml
+
+    - repoURL: https://github.com/brianbeck/PlatformForge.git
+      targetRevision: main
+      ref: values
+
+    - repoURL: https://github.com/brianbeck/PlatformForge.git
+      targetRevision: main
+      path: platform/falco/rules
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: falco
+
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 3m
