@@ -1,5 +1,7 @@
 # NetworkPolicy for Falco namespace
 # Restricts traffic to/from Falco pods.
+# Works for both stage and prod -- selectors use app.kubernetes.io/name
+# which is environment-agnostic.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -43,6 +45,10 @@ spec:
     # Kubernetes API server (for metadata enrichment)
     - ports:
         - port: 6443
+          protocol: TCP
+    # HTTPS outbound (falcoctl artifact downloads, rule updates)
+    - ports:
+        - port: 443
           protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
