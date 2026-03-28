@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gatekeeper-constraints-stage
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    platformforge/env: stage
+    platformforge/service: gatekeeper
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
+spec:
+  project: platform-stage
+
+  sources:
+    - repoURL: https://github.com/brianbeck/PlatformForge.git
+      targetRevision: main
+      path: platform/gatekeeper/constraints/stage
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gatekeeper-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

@@ -99,7 +99,9 @@
     mode: "0644"
   loop:
     - falco.yml
-    - gatekeeper.yml
+    - gatekeeper-core.yml
+    - gatekeeper-templates.yml
+    - gatekeeper-constraints.yml
     - prometheus-stack.yml
 
 - name: Template prod Applications
@@ -109,7 +111,9 @@
     mode: "0644"
   loop:
     - falco.yml
-    - gatekeeper.yml
+    - gatekeeper-core.yml
+    - gatekeeper-templates.yml
+    - gatekeeper-constraints.yml
     - prometheus-stack.yml
 
 # --- Install Argo CD to stage context ---

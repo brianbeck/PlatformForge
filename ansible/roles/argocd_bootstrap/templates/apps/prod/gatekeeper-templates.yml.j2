@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gatekeeper-templates-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    platformforge/env: prod
+    platformforge/service: gatekeeper
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    notifications.argoproj.io/subscribe.on-sync-failed: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
+spec:
+  project: platform-prod
+
+  sources:
+    - repoURL: {{ platformforge_repo_url }}
+      targetRevision: {{ platformforge_repo_revision }}
+      path: platform/gatekeeper/templates
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ gatekeeper_prod_namespace }}
+
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

@@ -1,18 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: gatekeeper-stage
+  name: gatekeeper-core-prod
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
-    platformforge/env: stage
+    platformforge/env: prod
     platformforge/service: gatekeeper
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
     notifications.argoproj.io/subscribe.on-sync-failed: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded: ""
 spec:
-  project: platform-stage
+  project: platform-prod
 
   sources:
     - repoURL: https://open-policy-agent.github.io/gatekeeper/charts
@@ -21,36 +22,23 @@ spec:
       helm:
         valueFiles:
           - $values/platform/gatekeeper/base-values.yaml
-          - $values/platform/gatekeeper/overlays/stage/values.yaml
+          - $values/platform/gatekeeper/overlays/prod/values.yaml
 
-    - repoURL: {{ platformforge_repo_url }}
-      targetRevision: {{ platformforge_repo_revision }}
+    - repoURL: https://github.com/brianbeck/PlatformForge.git
+      targetRevision: main
       ref: values
-
-    - repoURL: {{ platformforge_repo_url }}
-      targetRevision: {{ platformforge_repo_revision }}
-      path: platform/gatekeeper/constraints/templates
-
-    - repoURL: {{ platformforge_repo_url }}
-      targetRevision: {{ platformforge_repo_revision }}
-      path: platform/gatekeeper/constraints/stage
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: {{ gatekeeper_stage_namespace }}
+    namespace: gatekeeper-system
 
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
-      - SkipDryRunOnMissingResource=true
     retry:
-      limit: 3
+      limit: 5
       backoff:
         duration: 30s
         factor: 2
-        maxDuration: 3m
+        maxDuration: 5m
