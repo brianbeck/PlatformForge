@@ -174,6 +174,25 @@ git push
 # Argo CD auto-syncs stage; manually sync prod via UI or CLI
 ```
 
+## Teardown
+
+To cleanly remove all PlatformForge components from your clusters:
+
+```bash
+cd ansible
+ansible-playbook playbooks/teardown.yml
+```
+
+The teardown playbook:
+1. Confirms you want to proceed
+2. Deletes all Argo CD Applications
+3. Removes Gatekeeper admission webhooks (prevents namespace deletion from hanging)
+4. Removes Gatekeeper ConstraintTemplates
+5. Uninstalls Argo CD via Helm
+6. Deletes all platform namespaces
+7. Force-removes any stuck namespaces by clearing finalizers
+8. Repeats for the prod cluster (Model B)
+
 ## Platform Services
 
 ### Falco

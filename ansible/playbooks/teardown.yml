@@ -1,0 +1,315 @@
+---
+# PlatformForge Teardown Playbook
+#
+# Cleanly removes all PlatformForge components from cluster(s).
+# Must be run BEFORE destroying clusters to avoid dangling webhooks
+# and finalizers that block namespace deletion.
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook playbooks/teardown.yml
+
+- name: Teardown PlatformForge
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Verify required tools are installed
+      ansible.builtin.command:
+        cmd: "{{ item }} version"
+      loop:
+        - kubectl
+        - helm
+      changed_when: false
+      failed_when: tool_check.rc != 0
+      register: tool_check
+
+    - name: Load environment configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../environments.yml"
+      ignore_errors: true
+      register: env_load
+
+    - name: Fail if environment config not found
+      ansible.builtin.assert:
+        that:
+          - env_load is not failed
+        fail_msg: |
+          environments.yml not found. Either bootstrap was never run,
+          or the file was deleted. You can create it manually or specify
+          the contexts below.
+
+    - name: Display teardown warning
+      ansible.builtin.pause:
+        prompt: |
+
+          ================================================
+           PlatformForge Teardown
+          ================================================
+
+           WARNING: This will remove ALL PlatformForge
+           components from your cluster(s):
+
+             - Argo CD Applications
+             - Gatekeeper (including admission webhooks)
+             - Falco
+             - Observability Stack (Prometheus, Grafana, Alertmanager)
+             - Argo CD itself
+             - All associated namespaces
+
+           Stage context: {{ stage_context }}
+           Prod context:  {{ prod_context }}
+           Model: {{ env_model }}
+
+           Type 'yes' to proceed
+      register: confirm_teardown
+
+    - name: Abort if not confirmed
+      ansible.builtin.assert:
+        that:
+          - confirm_teardown.user_input == 'yes'
+        fail_msg: "Teardown aborted."
+
+  tasks:
+    # ============================================================
+    # STAGE CLUSTER TEARDOWN
+    # ============================================================
+
+    - name: "STAGE: Delete all Argo CD Applications"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} -n argocd delete applications --all --wait=false"
+      register: result
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+
+    - name: "STAGE: Wait for applications to terminate"
+      ansible.builtin.pause:
+        seconds: 10
+
+    # Remove webhooks BEFORE deleting namespaces to prevent blocking
+    - name: "STAGE: Remove Gatekeeper validating webhooks"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration {{ item }} --ignore-not-found"
+      loop:
+        - gatekeeper-validating-webhook-configuration
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+      register: result
+
+    - name: "STAGE: Remove Gatekeeper mutating webhooks"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete mutatingwebhookconfiguration {{ item }} --ignore-not-found"
+      loop:
+        - gatekeeper-mutating-webhook-configuration
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+      register: result
+
+    - name: "STAGE: Remove Gatekeeper labeled webhooks"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration -l gatekeeper.sh/system=yes --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
+    - name: "STAGE: Remove Prometheus Operator webhooks"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration -l app.kubernetes.io/instance=observability-stage --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
+    # Remove CRDs that have finalizers
+    - name: "STAGE: Remove Gatekeeper ConstraintTemplates"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete constrainttemplates --all --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
+    # Uninstall Helm releases
+    - name: "STAGE: Uninstall Argo CD Helm release"
+      ansible.builtin.command:
+        cmd: "helm --kube-context {{ stage_context }} uninstall argocd -n argocd --wait"
+      changed_when: false
+      failed_when: false
+
+    # Delete namespaces
+    - name: "STAGE: Delete platform namespaces"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
+      loop:
+        - argocd
+        - falco
+        - falco-stage
+        - gatekeeper-system
+        - monitoring
+        - monitoring-stage
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+      register: result
+
+    - name: "STAGE: Wait for namespaces to terminate"
+      ansible.builtin.pause:
+        seconds: 15
+
+    # Force-remove any stuck namespaces
+    - name: "STAGE: Check for stuck namespaces"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} get namespace {{ item }} -o jsonpath='{.status.phase}'"
+      loop:
+        - argocd
+        - falco
+        - falco-stage
+        - gatekeeper-system
+        - monitoring
+        - monitoring-stage
+      register: ns_status
+      changed_when: false
+      failed_when: false
+
+    - name: "STAGE: Force-remove stuck namespaces (clear finalizers)"
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} get namespace {{ item.item }} -o json
+          | jq '.spec.finalizers = []'
+          | kubectl --context {{ stage_context }} replace --raw "/api/v1/namespaces/{{ item.item }}/finalize" -f -
+      when:
+        - item.rc == 0
+        - "'Terminating' in item.stdout"
+      loop: "{{ ns_status.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      changed_when: true
+      failed_when: false
+
+    # ============================================================
+    # PROD CLUSTER TEARDOWN (Model B only)
+    # ============================================================
+
+    - name: "PROD: Delete all Argo CD Applications"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} -n argocd delete applications --all --wait=false"
+      register: result
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+
+    - name: "PROD: Wait for applications to terminate"
+      when: multi_cluster | bool
+      ansible.builtin.pause:
+        seconds: 10
+
+    - name: "PROD: Remove Gatekeeper validating webhooks"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration {{ item }} --ignore-not-found"
+      loop:
+        - gatekeeper-validating-webhook-configuration
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+      register: result
+
+    - name: "PROD: Remove Gatekeeper mutating webhooks"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete mutatingwebhookconfiguration {{ item }} --ignore-not-found"
+      loop:
+        - gatekeeper-mutating-webhook-configuration
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+      register: result
+
+    - name: "PROD: Remove Gatekeeper labeled webhooks"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration -l gatekeeper.sh/system=yes --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Remove Prometheus Operator webhooks"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration -l app.kubernetes.io/instance=observability-prod --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Remove Gatekeeper ConstraintTemplates"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete constrainttemplates --all --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Uninstall Argo CD Helm release"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "helm --kube-context {{ prod_context }} uninstall argocd -n argocd --wait"
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Delete platform namespaces"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
+      loop:
+        - argocd
+        - falco
+        - falco-prod
+        - gatekeeper-system
+        - monitoring
+        - monitoring-prod
+      changed_when: "'deleted' in result.stdout"
+      failed_when: false
+      register: result
+
+    - name: "PROD: Wait for namespaces to terminate"
+      when: multi_cluster | bool
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: "PROD: Check for stuck namespaces"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} get namespace {{ item }} -o jsonpath='{.status.phase}'"
+      loop:
+        - argocd
+        - falco
+        - falco-prod
+        - gatekeeper-system
+        - monitoring
+        - monitoring-prod
+      register: ns_status_prod
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Force-remove stuck namespaces (clear finalizers)"
+      when:
+        - multi_cluster | bool
+        - item.rc == 0
+        - "'Terminating' in item.stdout"
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} get namespace {{ item.item }} -o json
+          | jq '.spec.finalizers = []'
+          | kubectl --context {{ prod_context }} replace --raw "/api/v1/namespaces/{{ item.item }}/finalize" -f -
+      loop: "{{ ns_status_prod.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
+      changed_when: true
+      failed_when: false
+
+  post_tasks:
+    - name: Teardown complete
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+           PlatformForge teardown complete!
+          ================================================
+
+           All platform components have been removed.
+
+           To redeploy, run:
+             cd ansible
+             ansible-playbook playbooks/bootstrap.yml
+
+          ================================================
