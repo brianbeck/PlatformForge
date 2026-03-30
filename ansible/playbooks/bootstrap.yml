@@ -2,11 +2,9 @@
 # PlatformForge Bootstrap Playbook
 #
 # This playbook:
-#   1. Discovers the environment model (single or multi-cluster)
-#   2. Discovers and verifies kubectl contexts
-#   3. Optionally configures Traefik ingress and Pi-hole DNS
-#   4. Installs and configures Argo CD
-#   5. Applies AppProjects and Applications
+#   1. Prompts for configuration (repo URL, environment model, contexts, ingress)
+#   2. Installs all platform services via Helm in dependency order
+#   3. Registers Argo CD Applications for ongoing GitOps management
 #
 # Usage:
 #   cd ansible
@@ -105,15 +103,11 @@
           ================================================
 
            This playbook will:
-            1. Ask for your Git repository URL
-            2. Ask which environment model you are using
-            3. Discover and verify your kubectl contexts
-            4. Optionally configure Traefik ingress
-            5. Optionally configure Pi-hole DNS registration
-            6. Install Argo CD
-            7. Generate and apply AppProjects and Applications
-               for Traefik, Falco, OPA Gatekeeper, and
-               the Observability stack
+            1. Discover your environment configuration
+            2. Install all platform services in order:
+               Traefik -> Observability -> Gatekeeper -> Falco -> Argo CD
+            3. Register Argo CD Applications for GitOps management
+            4. Configure DNS (if Pi-hole enabled)
 
           ================================================
 
@@ -121,7 +115,7 @@
     - discover_environment
     - discover_contexts
     - discover_ingress
-    - argocd_bootstrap
+    - deploy_platform
     - pihole_dns
 
   post_tasks:
@@ -132,25 +126,19 @@
            PlatformForge bootstrap complete!
           ================================================
 
-           Environment config written to: environments.yml
-           Argo CD is running and managing:
-             - Falco (stage + prod)
-             - OPA Gatekeeper (stage + prod)
-             - Observability stack (stage + prod)
-          {% if traefik_enabled | default(false) | bool %}
-             - Traefik ingress (stage + prod)
-          {% endif %}
+           All services are running and Argo CD is managing them.
 
            Next steps:
              1. Commit the generated manifests:
                 git add argocd/ platform/ && git commit -m "Bootstrap: generate manifests" && git push
-             2. Access Argo CD UI:
+             2. Access Argo CD:
           {% if argocd_hostname_stage | default('') | length > 0 %}
                 Stage: https://{{ argocd_hostname_stage }}
                 Prod:  https://{{ argocd_hostname_prod }}
           {% else %}
                 kubectl -n argocd port-forward svc/argocd-server 8080:80
           {% endif %}
-             3. Verify Applications are syncing
+             3. Verify all Applications show Synced/Healthy
+             4. Run health check: ansible-playbook playbooks/healthcheck.yml
 
           ================================================

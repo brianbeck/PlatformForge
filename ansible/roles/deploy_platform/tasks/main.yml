@@ -1,0 +1,628 @@
+---
+# Deploy all platform services via Helm in the correct dependency order.
+# After this role completes, all services are running and healthy.
+# Argo CD Applications are then registered to take over GitOps management.
+
+# ============================================================
+# HELPER: Set base paths
+# ============================================================
+
+- name: Set platform base path
+  ansible.builtin.set_fact:
+    platform_dir: "{{ playbook_dir }}/../../platform"
+
+# ============================================================
+# STEP 1: TRAEFIK (Ingress Controller)
+# Must be first -- other services need Ingress.
+# ============================================================
+
+- name: Add Traefik Helm repository
+  when: traefik_enabled | default(false) | bool
+  ansible.builtin.command:
+    cmd: helm repo add traefik https://traefik.github.io/charts
+  register: result
+  changed_when: "'has been added' in result.stdout"
+  failed_when: false
+
+- name: Install Traefik (stage)
+  when: traefik_enabled | default(false) | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install traefik-stage traefik/traefik
+      --namespace traefik --create-namespace
+      --kube-context {{ stage_context }}
+      --version 39.0.7
+      --values {{ platform_dir }}/traefik/base-values.yaml
+      --values {{ platform_dir }}/traefik/overlays/stage/values.yaml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Install Traefik (prod)
+  when: traefik_enabled | default(false) | bool and multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install traefik-prod traefik/traefik
+      --namespace traefik --create-namespace
+      --kube-context {{ prod_context }}
+      --version 39.0.7
+      --values {{ platform_dir }}/traefik/base-values.yaml
+      --values {{ platform_dir }}/traefik/overlays/prod/values.yaml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Get Traefik LB IP (stage)
+  when: traefik_enabled | default(false) | bool
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n traefik
+      get svc -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+  register: traefik_ip_stage_raw
+  changed_when: false
+  retries: 10
+  delay: 10
+  until: traefik_ip_stage_raw.stdout | trim | length > 0
+
+- name: Get Traefik LB IP (prod)
+  when: traefik_enabled | default(false) | bool and multi_cluster | bool
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n traefik
+      get svc -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+  register: traefik_ip_prod_raw
+  changed_when: false
+  retries: 10
+  delay: 10
+  until: traefik_ip_prod_raw.stdout | trim | length > 0
+
+- name: Set Traefik IP facts
+  when: traefik_enabled | default(false) | bool
+  ansible.builtin.set_fact:
+    traefik_ip_stage: "{{ traefik_ip_stage_raw.stdout | trim }}"
+    traefik_ip_prod: "{{ (traefik_ip_prod_raw.stdout | trim) if multi_cluster | bool else traefik_ip_stage_raw.stdout | trim }}"
+
+- name: Display Traefik status
+  when: traefik_enabled | default(false) | bool
+  ansible.builtin.debug:
+    msg: "Traefik ready. Stage LB: {{ traefik_ip_stage }}, Prod LB: {{ traefik_ip_prod }}"
+
+# ============================================================
+# STEP 2: OBSERVABILITY STACK (Prometheus, Grafana, Alertmanager)
+# Must be before Falco/Gatekeeper so CRDs exist for ServiceMonitors.
+# ============================================================
+
+- name: Add Prometheus community Helm repository
+  ansible.builtin.command:
+    cmd: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  register: result
+  changed_when: "'has been added' in result.stdout"
+  failed_when: false
+
+- name: Build observability values files list (stage)
+  ansible.builtin.set_fact:
+    obs_values_stage: >-
+      --values {{ platform_dir }}/observability/base-values.yaml
+      --values {{ platform_dir }}/observability/overlays/stage/values.yaml
+      {{ '--values ' + platform_dir + '/observability/overlays/stage/ingress-values.yaml' if ingress_enabled | default(false) | bool else '' }}
+
+- name: Install Observability Stack (stage)
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install observability-stage prometheus-community/kube-prometheus-stack
+      --namespace {{ monitoring_stage_namespace }} --create-namespace
+      --kube-context {{ stage_context }}
+      --version 82.15.1
+      {{ obs_values_stage }}
+      --wait --timeout 10m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Build observability values files list (prod)
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    obs_values_prod: >-
+      --values {{ platform_dir }}/observability/base-values.yaml
+      --values {{ platform_dir }}/observability/overlays/prod/values.yaml
+      {{ '--values ' + platform_dir + '/observability/overlays/prod/ingress-values.yaml' if ingress_enabled | default(false) | bool else '' }}
+
+- name: Install Observability Stack (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install observability-prod prometheus-community/kube-prometheus-stack
+      --namespace {{ monitoring_prod_namespace }} --create-namespace
+      --kube-context {{ prod_context }}
+      --version 82.15.1
+      {{ obs_values_prod }}
+      --wait --timeout 10m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Verify Prometheus CRDs exist
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} get crd servicemonitors.monitoring.coreos.com"
+  changed_when: false
+
+- name: Display Observability status
+  ansible.builtin.debug:
+    msg: "Observability Stack ready. Prometheus CRDs installed."
+
+# ============================================================
+# STEP 3: GATEKEEPER (OPA Policy Engine)
+# Install core, wait for ready, then templates, then constraints.
+# ============================================================
+
+- name: Add Gatekeeper Helm repository
+  ansible.builtin.command:
+    cmd: helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+  register: result
+  changed_when: "'has been added' in result.stdout"
+  failed_when: false
+
+- name: Install Gatekeeper core (stage)
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install gatekeeper-core-stage gatekeeper/gatekeeper
+      --namespace gatekeeper-system --create-namespace
+      --kube-context {{ stage_context }}
+      --version 3.22.0
+      --values {{ platform_dir }}/gatekeeper/base-values.yaml
+      --values {{ platform_dir }}/gatekeeper/overlays/stage/values.yaml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Install Gatekeeper core (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install gatekeeper-core-prod gatekeeper/gatekeeper
+      --namespace gatekeeper-system --create-namespace
+      --kube-context {{ prod_context }}
+      --version 3.22.0
+      --values {{ platform_dir }}/gatekeeper/base-values.yaml
+      --values {{ platform_dir }}/gatekeeper/overlays/prod/values.yaml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Wait for Gatekeeper webhook to be ready (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n gatekeeper-system
+      rollout status deployment/gatekeeper-controller-manager --timeout=120s
+  changed_when: false
+
+- name: Wait for Gatekeeper webhook to be ready (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n gatekeeper-system
+      rollout status deployment/gatekeeper-controller-manager --timeout=120s
+  changed_when: false
+
+- name: Apply ConstraintTemplates (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ platform_dir }}/gatekeeper/templates/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply ConstraintTemplates (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ platform_dir }}/gatekeeper/templates/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Wait for ConstraintTemplate CRDs to be created (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} get constrainttemplates"
+  changed_when: false
+  retries: 10
+  delay: 5
+  until: ct_check.rc == 0
+  register: ct_check
+
+- name: Apply Constraints (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ platform_dir }}/gatekeeper/constraints/stage/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+  retries: 3
+  delay: 10
+  until: result.rc == 0
+
+- name: Apply Constraints (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ platform_dir }}/gatekeeper/constraints/prod/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+  retries: 3
+  delay: 10
+  until: result.rc == 0
+
+- name: Display Gatekeeper status
+  ansible.builtin.debug:
+    msg: "Gatekeeper ready. Core, ConstraintTemplates, and Constraints all applied."
+
+# ============================================================
+# STEP 4: FALCO (Runtime Security)
+# ============================================================
+
+- name: Add Falco Helm repository
+  ansible.builtin.command:
+    cmd: helm repo add falcosecurity https://falcosecurity.github.io/charts
+  register: result
+  changed_when: "'has been added' in result.stdout"
+  failed_when: false
+
+- name: Install Falco (stage)
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install falco-stage falcosecurity/falco
+      --namespace {{ falco_stage_namespace }} --create-namespace
+      --kube-context {{ stage_context }}
+      --version 8.0.1
+      --values {{ platform_dir }}/falco/base-values.yaml
+      --values {{ platform_dir }}/falco/overlays/stage/values.yaml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Install Falco (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install falco-prod falcosecurity/falco
+      --namespace {{ falco_prod_namespace }} --create-namespace
+      --kube-context {{ prod_context }}
+      --version 8.0.1
+      --values {{ platform_dir }}/falco/base-values.yaml
+      --values {{ platform_dir }}/falco/overlays/prod/values.yaml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Apply Falco additional manifests (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} -n {{ falco_stage_namespace }} apply -k {{ platform_dir }}/falco/rules/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+  failed_when: false
+
+- name: Apply Falco additional manifests (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} -n {{ falco_prod_namespace }} apply -k {{ platform_dir }}/falco/rules/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+  failed_when: false
+
+- name: Display Falco status
+  ansible.builtin.debug:
+    msg: "Falco installed on both clusters."
+
+# ============================================================
+# STEP 5: ARGO CD
+# ============================================================
+
+- name: Add Argo CD Helm repository
+  ansible.builtin.command:
+    cmd: "helm repo add argo {{ argocd_helm_repo }}"
+  register: result
+  changed_when: "'has been added' in result.stdout"
+  failed_when: false
+
+- name: Update all Helm repositories
+  ansible.builtin.command:
+    cmd: helm repo update
+  changed_when: false
+
+- name: Template Argo CD Helm values (stage)
+  ansible.builtin.template:
+    src: "values.yml.j2"
+    dest: "/tmp/argocd-values-stage.yml"
+    mode: "0644"
+  vars:
+    argocd_env: stage
+
+- name: Install Argo CD (stage)
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install argocd argo/argo-cd
+      --namespace {{ argocd_namespace }} --create-namespace
+      --kube-context {{ stage_context }}
+      --version {{ argocd_chart_version }}
+      --values /tmp/argocd-values-stage.yml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Wait for Argo CD server (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n {{ argocd_namespace }}
+      rollout status deployment/argocd-server --timeout=300s
+  changed_when: false
+
+- name: Template Argo CD Helm values (prod)
+  when: multi_cluster | bool
+  ansible.builtin.template:
+    src: "values.yml.j2"
+    dest: "/tmp/argocd-values-prod.yml"
+    mode: "0644"
+  vars:
+    argocd_env: prod
+
+- name: Install Argo CD (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install argocd argo/argo-cd
+      --namespace {{ argocd_namespace }} --create-namespace
+      --kube-context {{ prod_context }}
+      --version {{ argocd_chart_version }}
+      --values /tmp/argocd-values-prod.yml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Wait for Argo CD server (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n {{ argocd_namespace }}
+      rollout status deployment/argocd-server --timeout=300s
+  changed_when: false
+
+# ============================================================
+# STEP 6: INGRESS ROUTES
+# ============================================================
+
+- name: Apply Argo CD IngressRoute (stage)
+  when: ingress_enabled | default(false) | bool
+  block:
+    - name: Template stage Argo CD IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/argocd.yml.j2"
+        dest: "/tmp/argocd-ingressroute-stage.yml"
+        mode: "0644"
+      vars:
+        argocd_hostname: "{{ argocd_hostname_stage }}"
+
+    - name: Apply stage Argo CD IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-ingressroute-stage.yml"
+      changed_when: true
+
+- name: Apply Argo CD IngressRoute (prod)
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool
+  block:
+    - name: Template prod Argo CD IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/argocd.yml.j2"
+        dest: "/tmp/argocd-ingressroute-prod.yml"
+        mode: "0644"
+      vars:
+        argocd_hostname: "{{ argocd_hostname_prod }}"
+
+    - name: Apply prod Argo CD IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-ingressroute-prod.yml"
+      changed_when: true
+
+- name: Apply Grafana IngressRoute (stage)
+  when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0
+  block:
+    - name: Template stage Grafana IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/grafana.yml.j2"
+        dest: "/tmp/grafana-ingressroute-stage.yml"
+        mode: "0644"
+      vars:
+        grafana_hostname: "{{ grafana_hostname_stage }}"
+        monitoring_namespace: "{{ monitoring_stage_namespace }}"
+        env_suffix: "stage"
+
+    - name: Apply stage Grafana IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/grafana-ingressroute-stage.yml"
+      changed_when: true
+
+- name: Apply Prometheus IngressRoute (stage)
+  when: ingress_enabled | default(false) | bool and prometheus_hostname_stage | default('') | length > 0
+  block:
+    - name: Template stage Prometheus IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/prometheus.yml.j2"
+        dest: "/tmp/prometheus-ingressroute-stage.yml"
+        mode: "0644"
+      vars:
+        prometheus_hostname: "{{ prometheus_hostname_stage }}"
+        monitoring_namespace: "{{ monitoring_stage_namespace }}"
+        env_suffix: "stage"
+
+    - name: Apply stage Prometheus IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/prometheus-ingressroute-stage.yml"
+      changed_when: true
+
+- name: Apply Grafana IngressRoute (prod)
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and grafana_hostname_prod | default('') | length > 0
+  block:
+    - name: Template prod Grafana IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/grafana.yml.j2"
+        dest: "/tmp/grafana-ingressroute-prod.yml"
+        mode: "0644"
+      vars:
+        grafana_hostname: "{{ grafana_hostname_prod }}"
+        monitoring_namespace: "{{ monitoring_prod_namespace }}"
+        env_suffix: "prod"
+
+    - name: Apply prod Grafana IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/grafana-ingressroute-prod.yml"
+      changed_when: true
+
+- name: Apply Prometheus IngressRoute (prod)
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and prometheus_hostname_prod | default('') | length > 0
+  block:
+    - name: Template prod Prometheus IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/prometheus.yml.j2"
+        dest: "/tmp/prometheus-ingressroute-prod.yml"
+        mode: "0644"
+      vars:
+        prometheus_hostname: "{{ prometheus_hostname_prod }}"
+        monitoring_namespace: "{{ monitoring_prod_namespace }}"
+        env_suffix: "prod"
+
+    - name: Apply prod Prometheus IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/prometheus-ingressroute-prod.yml"
+      changed_when: true
+
+# ============================================================
+# STEP 7: REGISTER ARGO CD APPLICATIONS
+# Since everything is already installed and healthy, Argo CD
+# will immediately show all apps as Synced/Healthy.
+# ============================================================
+
+- name: Remove stale app manifests
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../argocd/apps/{{ item }}"
+    state: absent
+  loop:
+    - stage/gatekeeper.yml
+    - stage/prometheus-stack.yml
+    - prod/gatekeeper.yml
+    - prod/prometheus-stack.yml
+
+- name: Template AppProjects
+  ansible.builtin.template:
+    src: "projects/{{ item }}.j2"
+    dest: "{{ playbook_dir }}/../../argocd/projects/{{ item }}"
+    mode: "0644"
+  loop:
+    - platform-stage.yml
+    - platform-prod.yml
+
+- name: Build stage application list
+  ansible.builtin.set_fact:
+    stage_apps: >-
+      {{ ['traefik.yml'] if traefik_enabled | default(false) | bool else [] }}
+      + ['falco.yml', 'gatekeeper-core.yml', 'gatekeeper-templates.yml',
+         'gatekeeper-constraints.yml', 'observability.yml']
+
+- name: Template stage Applications
+  ansible.builtin.template:
+    src: "apps/stage/{{ item }}.j2"
+    dest: "{{ playbook_dir }}/../../argocd/apps/stage/{{ item }}"
+    mode: "0644"
+  loop: "{{ stage_apps }}"
+
+- name: Template prod Applications
+  ansible.builtin.template:
+    src: "apps/prod/{{ item }}.j2"
+    dest: "{{ playbook_dir }}/../../argocd/apps/prod/{{ item }}"
+    mode: "0644"
+  loop: "{{ stage_apps }}"
+
+- name: Template observability ingress values (stage)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.template:
+    src: "observability/overlays/stage/ingress-values.yaml.j2"
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/ingress-values.yaml"
+    mode: "0644"
+
+- name: Template observability ingress values (prod)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.template:
+    src: "observability/overlays/prod/ingress-values.yaml.j2"
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/ingress-values.yaml"
+    mode: "0644"
+
+- name: Apply stage AppProject
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/projects/platform-stage.yml"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply prod AppProject
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply stage Applications
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/apps/stage/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply prod Applications
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/apps/prod/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+- name: Clean up temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/argocd-values-stage.yml
+    - /tmp/argocd-values-prod.yml
+    - /tmp/argocd-ingressroute-stage.yml
+    - /tmp/argocd-ingressroute-prod.yml
+    - /tmp/grafana-ingressroute-stage.yml
+    - /tmp/grafana-ingressroute-prod.yml
+    - /tmp/prometheus-ingressroute-stage.yml
+    - /tmp/prometheus-ingressroute-prod.yml
+
+- name: Display deployment summary
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+       Platform Deployment Complete
+      ================================================
+
+      All services installed and healthy:
+        1. Traefik      {{ '(stage: ' + traefik_ip_stage + ', prod: ' + traefik_ip_prod + ')' if traefik_enabled | default(false) | bool else '(disabled)' }}
+        2. Observability (Prometheus, Grafana, Alertmanager)
+        3. Gatekeeper    (core + templates + constraints)
+        4. Falco          (runtime security)
+        5. Argo CD        (GitOps controller)
+
+      Argo CD Applications registered -- GitOps is now active.
+
+      {% if ingress_enabled | default(false) | bool %}
+      Ingress endpoints:
+        Stage Argo CD:     https://{{ argocd_hostname_stage }}
+        Prod Argo CD:      https://{{ argocd_hostname_prod }}
+      {% if grafana_hostname_stage | default('') | length > 0 %}
+        Stage Grafana:     https://{{ grafana_hostname_stage }}
+        Prod Grafana:      https://{{ grafana_hostname_prod }}
+      {% endif %}
+      {% if prometheus_hostname_stage | default('') | length > 0 %}
+        Stage Prometheus:  https://{{ prometheus_hostname_stage }}
+        Prod Prometheus:   https://{{ prometheus_hostname_prod }}
+      {% endif %}
+      {% endif %}
+
+      Argo CD admin password:
+        Stage: kubectl --context {{ stage_context }} -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+      {% if multi_cluster | bool %}
+        Prod:  kubectl --context {{ prod_context }} -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+      {% endif %}
+
+      ================================================
