@@ -4,6 +4,13 @@
 global:
   logging:
     level: info
+{% if ingress_enabled | default(false) | bool %}
+{% if argocd_env == 'stage' %}
+  domain: {{ argocd_hostname_stage }}
+{% else %}
+  domain: {{ argocd_hostname_prod }}
+{% endif %}
+{% endif %}
 
 server:
   extraArgs:
@@ -17,20 +24,6 @@ server:
   ingress:
     enabled: true
     ingressClassName: traefik
-    hosts:
-{% if argocd_env == 'stage' %}
-      - {{ argocd_hostname_stage }}
-{% else %}
-      - {{ argocd_hostname_prod }}
-{% endif %}
-    tls:
-      - hosts:
-{% if argocd_env == 'stage' %}
-          - {{ argocd_hostname_stage }}
-{% else %}
-          - {{ argocd_hostname_prod }}
-{% endif %}
-        secretName: argocd-server-tls
 {% endif %}
 
   resources:

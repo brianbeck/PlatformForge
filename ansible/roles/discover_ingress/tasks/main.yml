@@ -228,18 +228,18 @@
       when: vault_file.stat.exists and vault_pass_exists.stat.exists and vault_decrypt.rc == 0
       ansible.builtin.set_fact:
         existing_pihole_primary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_ip | default('') }}"
-        existing_pihole_primary_token: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_token | default('') }}"
+        existing_pihole_primary_password: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_password | default('') }}"
         existing_pihole_secondary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_ip | default('') }}"
-        existing_pihole_secondary_token: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_token | default('') }}"
+        existing_pihole_secondary_password: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_password | default('') }}"
       no_log: true
 
     - name: Initialize empty secrets if no vault
       when: not vault_file.stat.exists or not vault_pass_exists.stat.exists or (vault_decrypt is defined and vault_decrypt.rc != 0)
       ansible.builtin.set_fact:
         existing_pihole_primary_ip: ""
-        existing_pihole_primary_token: ""
+        existing_pihole_primary_password: ""
         existing_pihole_secondary_ip: ""
-        existing_pihole_secondary_token: ""
+        existing_pihole_secondary_password: ""
 
     - name: Prompt for primary Pi-hole IP
       ansible.builtin.pause:
@@ -251,10 +251,10 @@
     - name: Prompt for primary Pi-hole API token
       ansible.builtin.pause:
         prompt: >-
-          Primary Pi-hole API token
-          {{ '[stored - press Enter to keep]' if existing_pihole_primary_token | length > 0 else '' }}
+          Primary Pi-hole password
+          {{ '[stored - press Enter to keep]' if existing_pihole_primary_password | length > 0 else '' }}
         echo: false
-      register: pihole_primary_token_input
+      register: pihole_primary_password_input
 
     - name: Prompt for secondary Pi-hole IP
       ansible.builtin.pause:
@@ -267,23 +267,23 @@
       when: (pihole_secondary_ip_input.user_input | trim | length > 0) or (existing_pihole_secondary_ip | length > 0)
       ansible.builtin.pause:
         prompt: >-
-          Secondary Pi-hole API token
-          {{ '[stored - press Enter to keep]' if existing_pihole_secondary_token | length > 0 else '' }}
+          Secondary Pi-hole password
+          {{ '[stored - press Enter to keep]' if existing_pihole_secondary_password | length > 0 else '' }}
         echo: false
-      register: pihole_secondary_token_input
+      register: pihole_secondary_password_input
 
     - name: Set Pi-hole facts
       ansible.builtin.set_fact:
         pihole_primary_ip: "{{ pihole_primary_ip_input.user_input | trim | default(existing_pihole_primary_ip, true) }}"
-        pihole_primary_token: "{{ pihole_primary_token_input.user_input | trim | default(existing_pihole_primary_token, true) }}"
+        pihole_primary_password: "{{ pihole_primary_password_input.user_input | trim | default(existing_pihole_primary_password, true) }}"
         pihole_secondary_ip: "{{ pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true) }}"
-        pihole_secondary_token: "{{ (pihole_secondary_token_input.user_input | default('') | trim | default(existing_pihole_secondary_token, true)) if (pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true)) | length > 0 else '' }}"
+        pihole_secondary_password: "{{ (pihole_secondary_password_input.user_input | default('') | trim | default(existing_pihole_secondary_password, true)) if (pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true)) | length > 0 else '' }}"
 
     - name: Validate primary Pi-hole configuration
       ansible.builtin.assert:
         that:
           - pihole_primary_ip | length > 0
-          - pihole_primary_token | length > 0
+          - pihole_primary_password | length > 0
         fail_msg: "Primary Pi-hole IP and API token are required."
 
     # --- Save secrets to Ansible Vault ---
@@ -318,12 +318,7 @@
 
     - name: Write secrets to vault file
       ansible.builtin.copy:
-        content: |
-          ---
-          pihole_primary_ip: "{{ pihole_primary_ip }}"
-          pihole_primary_token: "{{ pihole_primary_token }}"
-          pihole_secondary_ip: "{{ pihole_secondary_ip }}"
-          pihole_secondary_token: "{{ pihole_secondary_token }}"
+        content: "{{ {'pihole_primary_ip': pihole_primary_ip, 'pihole_primary_password': pihole_primary_password, 'pihole_secondary_ip': pihole_secondary_ip, 'pihole_secondary_password': pihole_secondary_password} | to_nice_yaml }}"
         dest: "{{ playbook_dir }}/../vault/secrets.yml"
         mode: "0600"
 

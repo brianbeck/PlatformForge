@@ -107,5 +107,7 @@ spec:
       schedule: "* * * * *"
       duration: 24h
       applications:
-        - "*"
+        - "falco-prod"
+        - "gatekeeper-*-prod"
+        - "observability-prod"
       manualSync: true
