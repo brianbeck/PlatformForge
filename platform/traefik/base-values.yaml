@@ -33,7 +33,9 @@ ports:
     exposedPort: 443
     protocol: TCP
 
-# Enable Traefik dashboard (accessible internally)
+# Enable Traefik API and dashboard (accessible internally via port-forward)
+api:
+  insecure: true
 ingressRoute:
   dashboard:
     enabled: false
@@ -59,6 +61,8 @@ providers:
   kubernetesIngress:
     enabled: true
     allowExternalNameServices: true
+    publishedService:
+      enabled: true
   kubernetesCRD:
     enabled: true
     allowExternalNameServices: true
