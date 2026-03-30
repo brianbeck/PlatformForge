@@ -278,6 +278,50 @@
   register: apps_prod
   changed_when: "'configured' in apps_prod.stdout or 'created' in apps_prod.stdout"
 
+# --- Apply IngressRoutes (if enabled) ---
+
+- name: Template and apply Argo CD IngressRoute (stage)
+  when: ingress_enabled | default(false) | bool
+  block:
+    - name: Template stage Argo CD IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/argocd.yml.j2"
+        dest: "/tmp/argocd-ingressroute-stage.yml"
+        mode: "0644"
+      vars:
+        argocd_hostname: "{{ argocd_hostname_stage }}"
+
+    - name: Apply stage Argo CD IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-ingressroute-stage.yml"
+      changed_when: true
+
+    - name: Remove temp stage IngressRoute
+      ansible.builtin.file:
+        path: /tmp/argocd-ingressroute-stage.yml
+        state: absent
+
+- name: Template and apply Argo CD IngressRoute (prod)
+  when: ingress_enabled | default(false) | bool
+  block:
+    - name: Template prod Argo CD IngressRoute
+      ansible.builtin.template:
+        src: "ingressroutes/argocd.yml.j2"
+        dest: "/tmp/argocd-ingressroute-prod.yml"
+        mode: "0644"
+      vars:
+        argocd_hostname: "{{ argocd_hostname_prod }}"
+
+    - name: Apply prod Argo CD IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-ingressroute-prod.yml"
+      changed_when: true
+
+    - name: Remove temp prod IngressRoute
+      ansible.builtin.file:
+        path: /tmp/argocd-ingressroute-prod.yml
+        state: absent
+
 # --- Clean up temp files ---
 
 - name: Remove temporary Helm values files

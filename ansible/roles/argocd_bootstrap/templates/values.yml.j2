@@ -20,13 +20,9 @@ server:
   service:
     type: ClusterIP
 
-{% if ingress_enabled | default(false) | bool %}
+  # Ingress is handled via Traefik IngressRoute CRDs, not the chart's Ingress
   ingress:
-    enabled: true
-    ingressClassName: traefik
-    tls: false
-    annotations: {}
-{% endif %}
+    enabled: false
 
   resources:
     requests:
