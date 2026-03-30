@@ -277,7 +277,7 @@
         pihole_primary_ip: "{{ pihole_primary_ip_input.user_input | trim | default(existing_pihole_primary_ip, true) }}"
         pihole_primary_token: "{{ pihole_primary_token_input.user_input | trim | default(existing_pihole_primary_token, true) }}"
         pihole_secondary_ip: "{{ pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true) }}"
-        pihole_secondary_token: "{{ (pihole_secondary_token_input.user_input | trim | default(existing_pihole_secondary_token, true)) if (pihole_secondary_ip | length > 0) else '' }}"
+        pihole_secondary_token: "{{ (pihole_secondary_token_input.user_input | default('') | trim | default(existing_pihole_secondary_token, true)) if (pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true)) | length > 0 else '' }}"
 
     - name: Validate primary Pi-hole configuration
       ansible.builtin.assert:

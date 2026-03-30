@@ -43,11 +43,23 @@
   delay: 15
   until: traefik_ns_check.rc == 0
 
+- name: Get Traefik deployment name (stage)
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n traefik
+      get deployment -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].metadata.name}'
+  register: traefik_deploy_stage
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: traefik_deploy_stage.stdout | trim | length > 0
+
 - name: Wait for Traefik deployment to be ready (stage)
   ansible.builtin.command:
     cmd: >-
       kubectl --context {{ stage_context }} -n traefik
-      rollout status deployment/traefik --timeout=30s
+      rollout status deployment/{{ traefik_deploy_stage.stdout | trim }} --timeout=30s
   register: traefik_rollout
   changed_when: false
   retries: 10
@@ -65,12 +77,25 @@
   delay: 15
   until: traefik_ns_check_prod.rc == 0
 
+- name: Get Traefik deployment name (prod)
+  when: multi_cluster | bool
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n traefik
+      get deployment -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].metadata.name}'
+  register: traefik_deploy_prod
+  changed_when: false
+  retries: 5
+  delay: 10
+  until: traefik_deploy_prod.stdout | trim | length > 0
+
 - name: Wait for Traefik deployment to be ready (prod)
   when: multi_cluster | bool
   ansible.builtin.command:
     cmd: >-
       kubectl --context {{ prod_context }} -n traefik
-      rollout status deployment/traefik --timeout=30s
+      rollout status deployment/{{ traefik_deploy_prod.stdout | trim }} --timeout=30s
   register: traefik_rollout_prod
   changed_when: false
   retries: 10
@@ -81,11 +106,11 @@
 # --- Get Traefik LoadBalancer IPs ---
 
 - name: Get Traefik LoadBalancer IP (stage)
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: >-
       kubectl --context {{ stage_context }}
-      -n traefik get svc traefik
-      -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      -n traefik get svc -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
   register: traefik_ip_stage_raw
   changed_when: false
   retries: 10
@@ -94,11 +119,11 @@
 
 - name: Get Traefik LoadBalancer IP (prod)
   when: multi_cluster | bool
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: >-
       kubectl --context {{ prod_context }}
-      -n traefik get svc traefik
-      -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+      -n traefik get svc -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
   register: traefik_ip_prod_raw
   changed_when: false
   retries: 10
