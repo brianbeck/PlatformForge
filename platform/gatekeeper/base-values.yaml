@@ -18,12 +18,10 @@ audit:
   # Audit from cache (faster) rather than live API calls
   fromCache: true
 
-# Webhook configuration
-webhook:
-  # Fail-open so a Gatekeeper outage doesn't block the cluster
-  failurePolicy: Ignore
-  # Timeout for admission webhook calls
-  timeoutSeconds: 5
+# Webhook configuration -- fail-open so Gatekeeper outage doesn't block the cluster
+validatingWebhookFailurePolicy: Ignore
+validatingWebhookCheckIgnoreFailurePolicy: Ignore
+validatingWebhookTimeoutSeconds: 5
 
 # Enable mutation webhooks (for assign/modify resources)
 mutatingWebhook:
