@@ -5,10 +5,11 @@
 deployment:
   replicas: 1
 
-# Ingress class
+# Ingress class -- use a fixed name regardless of Helm release name
 ingressClass:
   enabled: true
   isDefaultClass: true
+  name: traefik
 
 # Service configuration -- MetalLB assigns an external IP
 service:
