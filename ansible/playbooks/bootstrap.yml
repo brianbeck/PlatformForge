@@ -19,6 +19,22 @@
     - ../group_vars/all.yml
 
   pre_tasks:
+    - name: Check for existing environment configuration
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../environments.yml"
+      register: env_file
+
+    - name: Load existing environment configuration
+      when: env_file.stat.exists
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../environments.yml"
+        name: saved_config
+      ignore_errors: true
+
+    - name: Set saved config defaults
+      ansible.builtin.set_fact:
+        saved: "{{ saved_config | default({}) }}"
+
     - name: Verify required tools are installed
       ansible.builtin.command:
         cmd: "{{ item }} version"

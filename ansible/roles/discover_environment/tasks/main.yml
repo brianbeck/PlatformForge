@@ -12,13 +12,18 @@
 
       Model A: Single Kubernetes cluster with separate stage and prod namespaces
       Model B: Two Kubernetes clusters, one for stage and one for prod
+      {% if saved.env_model | default('') | length > 0 %}
+
+      Previously selected: Model {{ saved.env_model }}
+      Press Enter to keep, or type A/B to change
+      {% endif %}
 
       Which model are you using? (A/B)
   register: env_model_input
 
 - name: Normalize environment model
   ansible.builtin.set_fact:
-    env_model: "{{ env_model_input.user_input | upper | trim }}"
+    env_model: "{{ env_model_input.user_input | upper | trim | default(saved.env_model | default(''), true) }}"
 
 - name: Validate environment model selection
   ansible.builtin.assert:

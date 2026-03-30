@@ -1,14 +1,18 @@
 ---
 # Install and configure Argo CD via Helm, then apply AppProjects and Applications.
 
-# --- Prompt for and validate repo URL if still set to placeholder ---
+# --- Prompt for and validate repo URL ---
+
+- name: Use saved repo URL if available
+  when: saved.platformforge_repo_url | default('') | length > 0
+  ansible.builtin.set_fact:
+    platformforge_repo_url: "{{ saved.platformforge_repo_url }}"
 
 - name: Check if repo URL needs configuration
   ansible.builtin.set_fact:
     repo_needs_config: "{{ 'YOUR_ORG' in platformforge_repo_url }}"
 
 - name: Prompt for PlatformForge Git repository URL
-  when: repo_needs_config | bool
   ansible.builtin.pause:
     prompt: |
 
@@ -18,12 +22,17 @@
       Examples:
         https://github.com/myorg/PlatformForge.git
         git@github.com:myorg/PlatformForge.git
+      {% if not repo_needs_config | bool %}
+
+      Current: {{ platformforge_repo_url }}
+      Press Enter to keep, or type a new URL
+      {% endif %}
 
       Repository URL
   register: repo_url_input
 
 - name: Set repo URL from user input
-  when: repo_needs_config | bool
+  when: repo_url_input.user_input | trim | length > 0
   ansible.builtin.set_fact:
     platformforge_repo_url: "{{ repo_url_input.user_input | trim }}"
 
@@ -141,6 +150,38 @@
     src: "observability/overlays/prod/ingress-values.yaml.j2"
     dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/ingress-values.yaml"
     mode: "0644"
+
+# --- Clean up any dangling webhooks from previous deployments ---
+
+- name: Remove dangling Gatekeeper webhooks (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration {{ item }} --ignore-not-found"
+  loop:
+    - gatekeeper-validating-webhook-configuration
+  changed_when: false
+  failed_when: false
+
+- name: Remove dangling Gatekeeper labeled webhooks (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration -l gatekeeper.sh/system=yes --ignore-not-found"
+  changed_when: false
+  failed_when: false
+
+- name: Remove dangling Gatekeeper webhooks (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration {{ item }} --ignore-not-found"
+  loop:
+    - gatekeeper-validating-webhook-configuration
+  changed_when: false
+  failed_when: false
+
+- name: Remove dangling Gatekeeper labeled webhooks (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration -l gatekeeper.sh/system=yes --ignore-not-found"
+  changed_when: false
+  failed_when: false
 
 # --- Install Argo CD to stage context ---
 

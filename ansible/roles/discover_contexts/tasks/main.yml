@@ -24,18 +24,18 @@
 - name: Prompt for cluster context (Model A)
   when: single_cluster | bool
   ansible.builtin.pause:
-    prompt: |
-
+    prompt: >-
       You selected Model A (single cluster).
       Enter the kubectl context name for your cluster
+      {{ '[' + saved.stage_context + ']' if saved.stage_context | default('') | length > 0 else '' }}
   register: single_context_input
 
 - name: Set single cluster context
   when: single_cluster | bool
   ansible.builtin.set_fact:
-    cluster_context: "{{ single_context_input.user_input | trim }}"
-    stage_context: "{{ single_context_input.user_input | trim }}"
-    prod_context: "{{ single_context_input.user_input | trim }}"
+    cluster_context: "{{ single_context_input.user_input | trim | default(saved.stage_context | default(''), true) }}"
+    stage_context: "{{ single_context_input.user_input | trim | default(saved.stage_context | default(''), true) }}"
+    prod_context: "{{ single_context_input.user_input | trim | default(saved.stage_context | default(''), true) }}"
 
 - name: Validate single cluster context
   when: single_cluster | bool
@@ -61,23 +61,25 @@
 - name: Prompt for stage context (Model B)
   when: multi_cluster | bool
   ansible.builtin.pause:
-    prompt: |
-
+    prompt: >-
       You selected Model B (separate clusters).
       Enter the kubectl context name for the STAGE cluster
+      {{ '[' + saved.stage_context + ']' if saved.stage_context | default('') | length > 0 else '' }}
   register: stage_context_input
 
 - name: Prompt for prod context (Model B)
   when: multi_cluster | bool
   ansible.builtin.pause:
-    prompt: "Enter the kubectl context name for the PROD cluster"
+    prompt: >-
+      Enter the kubectl context name for the PROD cluster
+      {{ '[' + saved.prod_context + ']' if saved.prod_context | default('') | length > 0 else '' }}
   register: prod_context_input
 
 - name: Set multi-cluster contexts
   when: multi_cluster | bool
   ansible.builtin.set_fact:
-    stage_context: "{{ stage_context_input.user_input | trim }}"
-    prod_context: "{{ prod_context_input.user_input | trim }}"
+    stage_context: "{{ stage_context_input.user_input | trim | default(saved.stage_context | default(''), true) }}"
+    prod_context: "{{ prod_context_input.user_input | trim | default(saved.prod_context | default(''), true) }}"
 
 - name: Validate stage context (Model B)
   when: multi_cluster | bool
@@ -140,6 +142,8 @@
       prod_context: "{{ prod_context }}"
       stage_server: "{{ stage_server }}"
       prod_server: "{{ prod_server }}"
+      platformforge_repo_url: "{{ platformforge_repo_url }}"
+      platformforge_repo_revision: "{{ platformforge_repo_revision }}"
     dest: "{{ playbook_dir }}/../../environments.yml"
     mode: "0644"
 

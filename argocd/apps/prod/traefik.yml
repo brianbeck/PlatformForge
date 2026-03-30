@@ -1,12 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: observability-prod
+  name: traefik-prod
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: platformforge
     platformforge/env: prod
-    platformforge/service: observability
+    platformforge/service: traefik
   annotations:
     argocd.argoproj.io/sync-wave: "0"
     notifications.argoproj.io/subscribe.on-health-degraded: ""
@@ -16,15 +16,13 @@ spec:
   project: platform-prod
 
   sources:
-    - repoURL: https://prometheus-community.github.io/helm-charts
-      chart: kube-prometheus-stack
-      targetRevision: "82.15.1"
+    - repoURL: https://traefik.github.io/charts
+      chart: traefik
+      targetRevision: "39.0.7"
       helm:
         valueFiles:
-          - $values/platform/observability/base-values.yaml
-          - $values/platform/observability/overlays/prod/values.yaml
-          - $values/platform/observability/overlays/prod/ingress-values.yaml
-        skipCrds: false
+          - $values/platform/traefik/base-values.yaml
+          - $values/platform/traefik/overlays/prod/values.yaml
 
     - repoURL: https://github.com/brianbeck/PlatformForge.git
       targetRevision: main
@@ -32,26 +30,15 @@ spec:
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: monitoring
+    namespace: traefik
 
   syncPolicy:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
         duration: 30s
         factor: 2
         maxDuration: 5m
-
-  ignoreDifferences:
-    - group: admissionregistration.k8s.io
-      kind: MutatingWebhookConfiguration
-      jqPathExpressions:
-        - .webhooks[]?.failurePolicy
-    - group: admissionregistration.k8s.io
-      kind: ValidatingWebhookConfiguration
-      jqPathExpressions:
-        - .webhooks[]?.failurePolicy

@@ -11,20 +11,72 @@
   ansible.builtin.meta: end_role
 
 # --- Load vault secrets ---
+# Decrypt vault file and load as variables
 
-- name: Load Pi-hole secrets from vault
-  ansible.builtin.include_vars:
-    file: "{{ playbook_dir }}/../vault/secrets.yml"
-    name: vault_secrets
-  vars:
-    ansible_vault_password_file: "{{ playbook_dir }}/../.vault_pass"
+- name: Decrypt vault secrets
+  ansible.builtin.command:
+    cmd: >-
+      ansible-vault decrypt
+      --vault-password-file {{ playbook_dir }}/../.vault_pass
+      --output -
+      {{ playbook_dir }}/../vault/secrets.yml
+  register: vault_decrypt
+  changed_when: false
+  no_log: true
 
-- name: Set Pi-hole credentials
+- name: Parse vault secrets
   ansible.builtin.set_fact:
-    pihole_primary_ip: "{{ vault_secrets.pihole_primary_ip }}"
-    pihole_primary_token: "{{ vault_secrets.pihole_primary_token }}"
-    pihole_secondary_ip: "{{ vault_secrets.pihole_secondary_ip | default('') }}"
-    pihole_secondary_token: "{{ vault_secrets.pihole_secondary_token | default('') }}"
+    pihole_primary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_ip }}"
+    pihole_primary_token: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_token }}"
+    pihole_secondary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_ip | default('') }}"
+    pihole_secondary_token: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_token | default('') }}"
+  no_log: true
+
+# --- Wait for Traefik to be deployed by Argo CD ---
+
+- name: Wait for Traefik namespace to exist (stage)
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} get namespace traefik"
+  register: traefik_ns_check
+  changed_when: false
+  retries: 20
+  delay: 15
+  until: traefik_ns_check.rc == 0
+
+- name: Wait for Traefik deployment to be ready (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n traefik
+      rollout status deployment/traefik --timeout=30s
+  register: traefik_rollout
+  changed_when: false
+  retries: 10
+  delay: 15
+  until: traefik_rollout.rc == 0
+  failed_when: false
+
+- name: Wait for Traefik namespace to exist (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} get namespace traefik"
+  register: traefik_ns_check_prod
+  changed_when: false
+  retries: 20
+  delay: 15
+  until: traefik_ns_check_prod.rc == 0
+
+- name: Wait for Traefik deployment to be ready (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n traefik
+      rollout status deployment/traefik --timeout=30s
+  register: traefik_rollout_prod
+  changed_when: false
+  retries: 10
+  delay: 15
+  until: traefik_rollout_prod.rc == 0
+  failed_when: false
 
 # --- Get Traefik LoadBalancer IPs ---
 

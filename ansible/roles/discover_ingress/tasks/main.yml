@@ -13,6 +13,9 @@
       Traefik can be deployed as an ingress controller to expose
       Argo CD, Grafana, and Prometheus via hostnames.
 
+      {% if saved.traefik_enabled | default('') | string == 'True' %}
+      Previously: Enabled. Press Enter to keep, or type N to disable.
+      {% endif %}
       Enable Traefik ingress controller? (Y/n)
   register: traefik_input
 
@@ -61,6 +64,10 @@
                if resolv_domain.rc == 0 and resolv_domain.stdout | trim | length > 0
                else '') }}
 
+- name: Determine FQDN default (saved > detected)
+  ansible.builtin.set_fact:
+    fqdn_default: "{{ saved.base_fqdn | default(detected_fqdn, true) }}"
+
 - name: Prompt for FQDN
   ansible.builtin.pause:
     prompt: |
@@ -70,17 +77,16 @@
       {% if detected_fqdn | length > 0 %}
       Detected domain: {{ detected_fqdn }}
       {% endif %}
-
-      Enter the base domain for service hostnames
-      (e.g. brianbeck.net)
-      {% if detected_fqdn | length > 0 %}
-      Press Enter to use: {{ detected_fqdn }}
+      {% if fqdn_default | length > 0 %}
+      Press Enter to use: {{ fqdn_default }}
       {% endif %}
+
+      Enter the base domain for service hostnames (e.g. brianbeck.net)
   register: fqdn_input
 
 - name: Set FQDN fact
   ansible.builtin.set_fact:
-    base_fqdn: "{{ fqdn_input.user_input | trim | default(detected_fqdn, true) }}"
+    base_fqdn: "{{ fqdn_input.user_input | trim | default(fqdn_default, true) }}"
 
 - name: Validate FQDN is not empty
   ansible.builtin.assert:
@@ -90,14 +96,14 @@
 
 # --- Prompt for hostnames ---
 
-- name: Set default hostnames
+- name: Set default hostnames (saved values take priority)
   ansible.builtin.set_fact:
-    default_argocd_stage: "argocd-stage.{{ base_fqdn }}"
-    default_argocd_prod: "argocd-prod.{{ base_fqdn }}"
-    default_grafana_stage: "grafana-stage.{{ base_fqdn }}"
-    default_grafana_prod: "grafana-prod.{{ base_fqdn }}"
-    default_prometheus_stage: "prometheus-stage.{{ base_fqdn }}"
-    default_prometheus_prod: "prometheus-prod.{{ base_fqdn }}"
+    default_argocd_stage: "{{ saved.argocd_hostname_stage | default('argocd-stage.' + base_fqdn, true) }}"
+    default_argocd_prod: "{{ saved.argocd_hostname_prod | default('argocd-prod.' + base_fqdn, true) }}"
+    default_grafana_stage: "{{ saved.grafana_hostname_stage | default('grafana-stage.' + base_fqdn, true) }}"
+    default_grafana_prod: "{{ saved.grafana_hostname_prod | default('grafana-prod.' + base_fqdn, true) }}"
+    default_prometheus_stage: "{{ saved.prometheus_hostname_stage | default('prometheus-stage.' + base_fqdn, true) }}"
+    default_prometheus_prod: "{{ saved.prometheus_hostname_prod | default('prometheus-prod.' + base_fqdn, true) }}"
 
 - name: Prompt for Argo CD stage hostname
   ansible.builtin.pause:
@@ -182,6 +188,9 @@
       This creates local DNS records pointing to the Traefik
       load balancer IP.
 
+      {% if saved.pihole_enabled | default('') | string == 'True' %}
+      Previously: Enabled. Press Enter to keep, or type N to disable.
+      {% endif %}
       Enable Pi-hole DNS registration? (Y/n)
   register: pihole_input
 
@@ -192,29 +201,40 @@
 - name: Collect Pi-hole configuration
   when: pihole_enabled | bool
   block:
-    - name: Check for existing vault secrets
+    - name: Check for existing vault secrets file
       ansible.builtin.stat:
         path: "{{ playbook_dir }}/../vault/secrets.yml"
       register: vault_file
 
-    - name: Load existing vault secrets
-      when: vault_file.stat.exists
-      ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../vault/secrets.yml"
-        name: vault_secrets
-      ignore_errors: true
-      register: vault_load
+    - name: Check for existing vault password file
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../.vault_pass"
+      register: vault_pass_exists
+
+    - name: Decrypt existing vault secrets
+      when: vault_file.stat.exists and vault_pass_exists.stat.exists
+      ansible.builtin.command:
+        cmd: >-
+          ansible-vault decrypt
+          --vault-password-file {{ playbook_dir }}/../.vault_pass
+          --output -
+          {{ playbook_dir }}/../vault/secrets.yml
+      register: vault_decrypt
+      changed_when: false
+      failed_when: false
+      no_log: true
 
     - name: Set existing secrets facts
-      when: vault_file.stat.exists and vault_load is not failed
+      when: vault_file.stat.exists and vault_pass_exists.stat.exists and vault_decrypt.rc == 0
       ansible.builtin.set_fact:
-        existing_pihole_primary_ip: "{{ vault_secrets.pihole_primary_ip | default('') }}"
-        existing_pihole_primary_token: "{{ vault_secrets.pihole_primary_token | default('') }}"
-        existing_pihole_secondary_ip: "{{ vault_secrets.pihole_secondary_ip | default('') }}"
-        existing_pihole_secondary_token: "{{ vault_secrets.pihole_secondary_token | default('') }}"
+        existing_pihole_primary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_ip | default('') }}"
+        existing_pihole_primary_token: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_token | default('') }}"
+        existing_pihole_secondary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_ip | default('') }}"
+        existing_pihole_secondary_token: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_token | default('') }}"
+      no_log: true
 
     - name: Initialize empty secrets if no vault
-      when: not vault_file.stat.exists or vault_load is failed
+      when: not vault_file.stat.exists or not vault_pass_exists.stat.exists or (vault_decrypt is defined and vault_decrypt.rc != 0)
       ansible.builtin.set_fact:
         existing_pihole_primary_ip: ""
         existing_pihole_primary_token: ""
@@ -238,11 +258,13 @@
 
     - name: Prompt for secondary Pi-hole IP
       ansible.builtin.pause:
-        prompt: "Secondary Pi-hole IP address (leave blank to skip)"
+        prompt: >-
+          Secondary Pi-hole IP address (leave blank to skip)
+          {{ '[' + existing_pihole_secondary_ip + ']' if existing_pihole_secondary_ip | length > 0 else '' }}
       register: pihole_secondary_ip_input
 
     - name: Prompt for secondary Pi-hole API token
-      when: pihole_secondary_ip_input.user_input | trim | length > 0
+      when: (pihole_secondary_ip_input.user_input | trim | length > 0) or (existing_pihole_secondary_ip | length > 0)
       ansible.builtin.pause:
         prompt: >-
           Secondary Pi-hole API token
@@ -255,7 +277,7 @@
         pihole_primary_ip: "{{ pihole_primary_ip_input.user_input | trim | default(existing_pihole_primary_ip, true) }}"
         pihole_primary_token: "{{ pihole_primary_token_input.user_input | trim | default(existing_pihole_primary_token, true) }}"
         pihole_secondary_ip: "{{ pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true) }}"
-        pihole_secondary_token: "{{ (pihole_secondary_token_input.user_input | trim | default(existing_pihole_secondary_token, true)) if pihole_secondary_ip_input.user_input | trim | length > 0 else '' }}"
+        pihole_secondary_token: "{{ (pihole_secondary_token_input.user_input | trim | default(existing_pihole_secondary_token, true)) if (pihole_secondary_ip | length > 0) else '' }}"
 
     - name: Validate primary Pi-hole configuration
       ansible.builtin.assert:

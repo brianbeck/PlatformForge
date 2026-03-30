@@ -22,14 +22,16 @@ ports:
     exposedPort: 80
     protocol: TCP
     # Redirect HTTP to HTTPS
-    redirectTo:
-      port: websecure
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
   websecure:
     port: 8443
     exposedPort: 443
     protocol: TCP
-    tls:
-      enabled: true
 
 # Enable Traefik dashboard (accessible internally)
 ingressRoute:
