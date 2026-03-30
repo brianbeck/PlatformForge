@@ -1,0 +1,65 @@
+---
+# Register service hostnames with Pi-hole DNS servers.
+#
+# Prerequisites: bootstrap.yml and deploy-ingress.yml have been run
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook playbooks/deploy-dns.yml
+
+- name: Register DNS with Pi-hole
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Load environment configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../environments.yml"
+
+    - name: Skip if Pi-hole not enabled
+      when: not (pihole_enabled | default(false) | bool)
+      block:
+        - name: Pi-hole not enabled
+          ansible.builtin.debug:
+            msg: "Pi-hole DNS is not enabled. Run bootstrap.yml to configure."
+        - name: End play
+          ansible.builtin.meta: end_play
+
+    - name: Skip if ingress not enabled
+      when: not (ingress_enabled | default(false) | bool)
+      block:
+        - name: Ingress not enabled
+          ansible.builtin.debug:
+            msg: "Ingress is not enabled. No hostnames to register."
+        - name: End play
+          ansible.builtin.meta: end_play
+
+    # Get Traefik LB IPs
+    - name: Get Traefik LB IP (stage)
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} -n traefik
+          get svc -l app.kubernetes.io/name=traefik
+          -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+      register: traefik_ip_stage_raw
+      changed_when: false
+
+    - name: Get Traefik LB IP (prod)
+      when: multi_cluster | bool
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} -n traefik
+          get svc -l app.kubernetes.io/name=traefik
+          -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+      register: traefik_ip_prod_raw
+      changed_when: false
+
+    - name: Set Traefik IP facts
+      ansible.builtin.set_fact:
+        traefik_ip_stage: "{{ traefik_ip_stage_raw.stdout | trim }}"
+        traefik_ip_prod: "{{ (traefik_ip_prod_raw.stdout | trim) if multi_cluster | bool else traefik_ip_stage_raw.stdout | trim }}"
+
+  roles:
+    - pihole_dns

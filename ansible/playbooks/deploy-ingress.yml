@@ -1,0 +1,106 @@
+---
+# Deploy Traefik Ingress Controller
+#
+# Prerequisites: bootstrap.yml has been run
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook playbooks/deploy-ingress.yml
+
+- name: Deploy Traefik Ingress Controller
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Load environment configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../environments.yml"
+
+    - name: Skip if Traefik not enabled
+      when: not (traefik_enabled | default(false) | bool)
+      block:
+        - name: Traefik not enabled
+          ansible.builtin.debug:
+            msg: "Traefik is not enabled. Run bootstrap.yml to configure."
+        - name: End play
+          ansible.builtin.meta: end_play
+
+    - name: Set platform base path
+      ansible.builtin.set_fact:
+        platform_dir: "{{ playbook_dir }}/../../platform"
+
+  tasks:
+    - name: Add Traefik Helm repository
+      ansible.builtin.command:
+        cmd: helm repo add traefik https://traefik.github.io/charts
+      register: result
+      changed_when: "'has been added' in result.stdout"
+      failed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command:
+        cmd: helm repo update traefik
+      changed_when: false
+
+    - name: Install Traefik (stage)
+      ansible.builtin.command:
+        cmd: >-
+          helm upgrade --install traefik-stage traefik/traefik
+          --namespace traefik --create-namespace
+          --kube-context {{ stage_context }}
+          --version 39.0.7
+          --values {{ platform_dir }}/traefik/base-values.yaml
+          --values {{ platform_dir }}/traefik/overlays/stage/values.yaml
+          --wait --timeout 5m
+      register: result
+      changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+    - name: Install Traefik (prod)
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: >-
+          helm upgrade --install traefik-prod traefik/traefik
+          --namespace traefik --create-namespace
+          --kube-context {{ prod_context }}
+          --version 39.0.7
+          --values {{ platform_dir }}/traefik/base-values.yaml
+          --values {{ platform_dir }}/traefik/overlays/prod/values.yaml
+          --wait --timeout 5m
+      register: result
+      changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+    - name: Get Traefik LB IP (stage)
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} -n traefik
+          get svc -l app.kubernetes.io/name=traefik
+          -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+      register: traefik_ip_stage_raw
+      changed_when: false
+      retries: 10
+      delay: 10
+      until: traefik_ip_stage_raw.stdout | trim | length > 0
+
+    - name: Get Traefik LB IP (prod)
+      when: multi_cluster | bool
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} -n traefik
+          get svc -l app.kubernetes.io/name=traefik
+          -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+      register: traefik_ip_prod_raw
+      changed_when: false
+      retries: 10
+      delay: 10
+      until: traefik_ip_prod_raw.stdout | trim | length > 0
+
+    - name: Display Traefik status
+      ansible.builtin.debug:
+        msg: |
+          Traefik deployed successfully.
+            Stage LB IP: {{ traefik_ip_stage_raw.stdout | trim }}
+          {% if multi_cluster | bool %}
+            Prod LB IP:  {{ traefik_ip_prod_raw.stdout | trim }}
+          {% endif %}

@@ -1,16 +1,14 @@
 ---
-# PlatformForge Bootstrap Playbook
+# PlatformForge Bootstrap
 #
-# This playbook:
-#   1. Prompts for configuration (repo URL, environment model, contexts, ingress)
-#   2. Installs all platform services via Helm in dependency order
-#   3. Registers Argo CD Applications for ongoing GitOps management
+# Configuration only -- no services are installed.
+# Prompts for all settings and saves them for use by deploy playbooks.
 #
 # Usage:
 #   cd ansible
 #   ansible-playbook playbooks/bootstrap.yml
 
-- name: Bootstrap PlatformForge
+- name: PlatformForge Bootstrap (Configuration)
   hosts: localhost
   gather_facts: true
   vars_files:
@@ -46,12 +44,10 @@
       ansible.builtin.pause:
         prompt: |
 
-          Enter your PlatformForge Git repository URL.
-          This is the repo Argo CD will watch for changes.
+          PlatformForge Bootstrap
+          =======================
 
-          Examples:
-            https://github.com/myorg/PlatformForge.git
-            git@github.com:myorg/PlatformForge.git
+          Enter your PlatformForge Git repository URL.
           {% if not repo_needs_config | bool %}
 
           Current: {{ platformforge_repo_url }}
@@ -66,7 +62,7 @@
       ansible.builtin.set_fact:
         platformforge_repo_url: "{{ repo_url_input.user_input | trim }}"
 
-    - name: Validate repo URL is not empty
+    - name: Validate repo URL
       ansible.builtin.assert:
         that:
           - platformforge_repo_url | length > 0
@@ -80,10 +76,6 @@
       changed_when: false
       failed_when: repo_check.rc != 0
 
-    - name: Display configured repo URL
-      ansible.builtin.debug:
-        msg: "Repository: {{ platformforge_repo_url }} (revision: {{ platformforge_repo_revision }})"
-
     - name: Verify required tools are installed
       ansible.builtin.command:
         cmd: "{{ item }} version"
@@ -95,50 +87,26 @@
       register: tool_check
       failed_when: tool_check.rc != 0
 
-    - name: Display welcome message
-      ansible.builtin.debug:
-        msg: |
-          ================================================
-           PlatformForge Bootstrap
-          ================================================
-
-           This playbook will:
-            1. Discover your environment configuration
-            2. Install all platform services in order:
-               Traefik -> Observability -> Gatekeeper -> Falco -> Argo CD
-            3. Register Argo CD Applications for GitOps management
-            4. Configure DNS (if Pi-hole enabled)
-
-          ================================================
-
   roles:
     - discover_environment
     - discover_contexts
     - discover_ingress
-    - deploy_platform
-    - pihole_dns
 
   post_tasks:
     - name: Bootstrap complete
       ansible.builtin.debug:
         msg: |
           ================================================
-           PlatformForge bootstrap complete!
+           Configuration saved to environments.yml
           ================================================
 
-           All services are running and Argo CD is managing them.
+           To deploy all services:
+             ansible-playbook playbooks/deploy-all.yml
 
-           Next steps:
-             1. Commit the generated manifests:
-                git add argocd/ platform/ && git commit -m "Bootstrap: generate manifests" && git push
-             2. Access Argo CD:
-          {% if argocd_hostname_stage | default('') | length > 0 %}
-                Stage: https://{{ argocd_hostname_stage }}
-                Prod:  https://{{ argocd_hostname_prod }}
-          {% else %}
-                kubectl -n argocd port-forward svc/argocd-server 8080:80
-          {% endif %}
-             3. Verify all Applications show Synced/Healthy
-             4. Run health check: ansible-playbook playbooks/healthcheck.yml
+           Or deploy individually in order:
+             ansible-playbook playbooks/deploy-ingress.yml
+             ansible-playbook playbooks/deploy-observability.yml
+             ansible-playbook playbooks/deploy-devsecops.yml
+             ansible-playbook playbooks/deploy-continuousdeployment.yml
 
           ================================================
