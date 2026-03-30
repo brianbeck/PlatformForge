@@ -24,6 +24,10 @@ server:
   ingress:
     enabled: true
     ingressClassName: traefik
+    # TLS termination happens at Traefik; backend is HTTP (--insecure)
+    tls: false
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
 {% endif %}
 
   resources:

@@ -4,12 +4,10 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
     hosts:
       - {{ grafana_hostname_prod }}
-    tls:
-      - hosts:
-          - {{ grafana_hostname_prod }}
-        secretName: grafana-tls
 {% endif %}
 
 {% if prometheus_hostname_prod | default('') | length > 0 %}
@@ -17,10 +15,8 @@ prometheus:
   ingress:
     enabled: true
     ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
     hosts:
       - {{ prometheus_hostname_prod }}
-    tls:
-      - hosts:
-          - {{ prometheus_hostname_prod }}
-        secretName: prometheus-tls
 {% endif %}
