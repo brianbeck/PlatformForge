@@ -89,6 +89,20 @@
         seconds: 10
 
     # Remove webhooks BEFORE deleting namespaces to prevent blocking
+    - name: "STAGE: Remove Traefik cluster-scoped resources"
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} delete clusterrole,clusterrolebinding
+          -l app.kubernetes.io/name=traefik --ignore-not-found
+      changed_when: false
+      failed_when: false
+
+    - name: "STAGE: Remove Traefik IngressClass"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} delete ingressclass traefik --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
     - name: "STAGE: Remove Gatekeeper validating webhooks"
       ansible.builtin.command:
         cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration {{ item }} --ignore-not-found"
@@ -113,9 +127,27 @@
       changed_when: false
       failed_when: false
 
-    - name: "STAGE: Remove Prometheus Operator webhooks"
-      ansible.builtin.command:
-        cmd: "kubectl --context {{ stage_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration -l app.kubernetes.io/instance=observability-stage --ignore-not-found"
+    - name: "STAGE: Remove Prometheus/Observability webhooks (all naming variants)"
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
+          -l app.kubernetes.io/instance=observability-stage --ignore-not-found;
+          kubectl --context {{ stage_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
+          -l app.kubernetes.io/instance=prometheus-stack-stage --ignore-not-found;
+          kubectl --context {{ stage_context }} delete validatingwebhookconfiguration
+          prometheus-stack-stage-kub-admission --ignore-not-found;
+          kubectl --context {{ stage_context }} delete validatingwebhookconfiguration
+          observability-stage-kube-p-admission --ignore-not-found
+      changed_when: false
+      failed_when: false
+
+    - name: "STAGE: Remove orphaned cluster roles from observability stack"
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} delete clusterrole,clusterrolebinding
+          -l app.kubernetes.io/instance=observability-stage --ignore-not-found;
+          kubectl --context {{ stage_context }} delete clusterrole,clusterrolebinding
+          -l app.kubernetes.io/instance=prometheus-stack-stage --ignore-not-found
       changed_when: false
       failed_when: false
 
@@ -130,6 +162,35 @@
     - name: "STAGE: Uninstall Argo CD Helm release"
       ansible.builtin.command:
         cmd: "helm --kube-context {{ stage_context }} uninstall argocd -n argocd --wait"
+      changed_when: false
+      failed_when: false
+
+    # Clean up Helm hook jobs that block reinstall
+    - name: "STAGE: Delete Helm hook jobs in all platform namespaces"
+      ansible.builtin.shell:
+        cmd: "kubectl --context {{ stage_context }} delete jobs --all -n {{ item }} --force --ignore-not-found 2>/dev/null"
+      loop:
+        - monitoring
+        - monitoring-stage
+        - gatekeeper-system
+        - falco
+        - falco-stage
+      changed_when: false
+      failed_when: false
+
+    # Uninstall Helm releases before deleting namespaces
+    - name: "STAGE: Uninstall platform Helm releases"
+      ansible.builtin.command:
+        cmd: "helm --kube-context {{ stage_context }} uninstall {{ item.name }} -n {{ item.ns }} --wait"
+      loop:
+        - { name: "traefik-stage", ns: "traefik" }
+        - { name: "observability-stage", ns: "monitoring" }
+        - { name: "observability-stage", ns: "monitoring-stage" }
+        - { name: "gatekeeper-core-stage", ns: "gatekeeper-system" }
+        - { name: "falco-stage", ns: "falco" }
+        - { name: "falco-stage", ns: "falco-stage" }
+      loop_control:
+        label: "{{ item.name }}"
       changed_when: false
       failed_when: false
 
@@ -201,6 +262,22 @@
       ansible.builtin.pause:
         seconds: 10
 
+    - name: "PROD: Remove Traefik cluster-scoped resources"
+      when: multi_cluster | bool
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
+          -l app.kubernetes.io/name=traefik --ignore-not-found
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Remove Traefik IngressClass"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete ingressclass traefik --ignore-not-found"
+      changed_when: false
+      failed_when: false
+
     - name: "PROD: Remove Gatekeeper validating webhooks"
       when: multi_cluster | bool
       ansible.builtin.command:
@@ -228,10 +305,29 @@
       changed_when: false
       failed_when: false
 
-    - name: "PROD: Remove Prometheus Operator webhooks"
+    - name: "PROD: Remove Prometheus/Observability webhooks (all naming variants)"
       when: multi_cluster | bool
-      ansible.builtin.command:
-        cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration -l app.kubernetes.io/instance=observability-prod --ignore-not-found"
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
+          -l app.kubernetes.io/instance=observability-prod --ignore-not-found;
+          kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
+          -l app.kubernetes.io/instance=prometheus-stack-prod --ignore-not-found;
+          kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
+          prometheus-stack-prod-kub-admission --ignore-not-found;
+          kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
+          observability-prod-kube-p-admission --ignore-not-found
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Remove orphaned cluster roles from observability stack"
+      when: multi_cluster | bool
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
+          -l app.kubernetes.io/instance=observability-prod --ignore-not-found;
+          kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
+          -l app.kubernetes.io/instance=prometheus-stack-prod --ignore-not-found
       changed_when: false
       failed_when: false
 
@@ -246,6 +342,35 @@
       when: multi_cluster | bool
       ansible.builtin.command:
         cmd: "helm --kube-context {{ prod_context }} uninstall argocd -n argocd --wait"
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Delete Helm hook jobs in all platform namespaces"
+      when: multi_cluster | bool
+      ansible.builtin.shell:
+        cmd: "kubectl --context {{ prod_context }} delete jobs --all -n {{ item }} --force --ignore-not-found 2>/dev/null"
+      loop:
+        - monitoring
+        - monitoring-prod
+        - gatekeeper-system
+        - falco
+        - falco-prod
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Uninstall platform Helm releases"
+      when: multi_cluster | bool
+      ansible.builtin.command:
+        cmd: "helm --kube-context {{ prod_context }} uninstall {{ item.name }} -n {{ item.ns }} --wait"
+      loop:
+        - { name: "traefik-prod", ns: "traefik" }
+        - { name: "observability-prod", ns: "monitoring" }
+        - { name: "observability-prod", ns: "monitoring-prod" }
+        - { name: "gatekeeper-core-prod", ns: "gatekeeper-system" }
+        - { name: "falco-prod", ns: "falco" }
+        - { name: "falco-prod", ns: "falco-prod" }
+      loop_control:
+        label: "{{ item.name }}"
       changed_when: false
       failed_when: false
 

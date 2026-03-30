@@ -11,6 +11,26 @@
   ansible.builtin.set_fact:
     platform_dir: "{{ playbook_dir }}/../../platform"
 
+- name: Set namespace facts for Model A (single cluster)
+  when: single_cluster | bool
+  ansible.builtin.set_fact:
+    falco_stage_namespace: "falco-stage"
+    falco_prod_namespace: "falco-prod"
+    gatekeeper_stage_namespace: "gatekeeper-system"
+    gatekeeper_prod_namespace: "gatekeeper-system"
+    monitoring_stage_namespace: "monitoring-stage"
+    monitoring_prod_namespace: "monitoring-prod"
+
+- name: Set namespace facts for Model B (multi-cluster)
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    falco_stage_namespace: "falco"
+    falco_prod_namespace: "falco"
+    gatekeeper_stage_namespace: "gatekeeper-system"
+    gatekeeper_prod_namespace: "gatekeeper-system"
+    monitoring_stage_namespace: "monitoring"
+    monitoring_prod_namespace: "monitoring"
+
 # ============================================================
 # STEP 1: TRAEFIK (Ingress Controller)
 # Must be first -- other services need Ingress.
