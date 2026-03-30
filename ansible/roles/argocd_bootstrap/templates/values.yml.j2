@@ -25,10 +25,7 @@ server:
     enabled: true
     ingressClassName: traefik
     tls: false
-    annotations:
-      traefik.ingress.kubernetes.io/router.entrypoints: websecure
-      # Force Traefik to use HTTP when connecting to the backend
-      traefik.ingress.kubernetes.io/service.serversscheme: http
+    annotations: {}
 {% endif %}
 
   resources:

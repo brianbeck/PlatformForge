@@ -4,8 +4,7 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: traefik
-    annotations:
-      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    annotations: {}
     hosts:
       - {{ grafana_hostname_stage }}
 {% endif %}
@@ -15,8 +14,7 @@ prometheus:
   ingress:
     enabled: true
     ingressClassName: traefik
-    annotations:
-      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    annotations: {}
     hosts:
       - {{ prometheus_hostname_stage }}
 {% endif %}
