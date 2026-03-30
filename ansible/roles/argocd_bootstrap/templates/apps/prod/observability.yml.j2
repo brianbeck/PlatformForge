@@ -23,6 +23,9 @@ spec:
         valueFiles:
           - $values/platform/observability/base-values.yaml
           - $values/platform/observability/overlays/prod/values.yaml
+{% if ingress_enabled | default(false) | bool %}
+          - $values/platform/observability/overlays/prod/ingress-values.yaml
+{% endif %}
         skipCrds: false
 
     - repoURL: {{ platformforge_repo_url }}

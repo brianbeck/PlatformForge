@@ -144,6 +144,7 @@
         - gatekeeper-system
         - monitoring
         - monitoring-stage
+        - traefik
       changed_when: "'deleted' in result.stdout"
       failed_when: false
       register: result
@@ -163,6 +164,7 @@
         - gatekeeper-system
         - monitoring
         - monitoring-stage
+        - traefik
       register: ns_status
       changed_when: false
       failed_when: false
@@ -258,6 +260,7 @@
         - gatekeeper-system
         - monitoring
         - monitoring-prod
+        - traefik
       changed_when: "'deleted' in result.stdout"
       failed_when: false
       register: result
@@ -278,6 +281,7 @@
         - gatekeeper-system
         - monitoring
         - monitoring-prod
+        - traefik
       register: ns_status_prod
       changed_when: false
       failed_when: false

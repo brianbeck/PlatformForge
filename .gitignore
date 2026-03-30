@@ -32,3 +32,8 @@ Thumbs.db
 *.key
 *.pem
 secrets/
+ansible/vault/
+ansible/.vault_pass
+
+# Generated ingress values (templated by bootstrap)
+platform/observability/overlays/*/ingress-values.yaml

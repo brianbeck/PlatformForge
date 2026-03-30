@@ -1,0 +1,365 @@
+---
+# Discover ingress preferences: Traefik, hostnames, DNS registration.
+
+# --- Ask about Traefik ---
+
+- name: Prompt to enable Traefik ingress controller
+  ansible.builtin.pause:
+    prompt: |
+
+      Ingress Configuration
+      =====================
+
+      Traefik can be deployed as an ingress controller to expose
+      Argo CD, Grafana, and Prometheus via hostnames.
+
+      Enable Traefik ingress controller? (Y/n)
+  register: traefik_input
+
+- name: Set Traefik enabled fact
+  ansible.builtin.set_fact:
+    traefik_enabled: "{{ traefik_input.user_input | default('Y') | upper | trim != 'N' }}"
+
+- name: Skip ingress configuration if Traefik disabled
+  when: not traefik_enabled | bool
+  ansible.builtin.set_fact:
+    ingress_enabled: false
+    pihole_enabled: false
+    argocd_hostname_stage: ""
+    argocd_hostname_prod: ""
+    grafana_hostname_stage: ""
+    grafana_hostname_prod: ""
+    prometheus_hostname_stage: ""
+    prometheus_hostname_prod: ""
+
+- name: Skip remaining ingress tasks
+  when: not traefik_enabled | bool
+  ansible.builtin.meta: end_role
+
+# --- Detect FQDN ---
+
+- name: Detect domain from hostname -d
+  ansible.builtin.command:
+    cmd: hostname -d
+  register: hostname_domain
+  changed_when: false
+  failed_when: false
+
+- name: Detect domain from /etc/resolv.conf
+  ansible.builtin.shell:
+    cmd: grep '^search' /etc/resolv.conf | awk '{print $2}' | head -1
+  register: resolv_domain
+  changed_when: false
+  failed_when: false
+
+- name: Determine best FQDN candidate
+  ansible.builtin.set_fact:
+    detected_fqdn: >-
+      {{ hostname_domain.stdout | trim
+         if hostname_domain.rc == 0 and hostname_domain.stdout | trim | length > 0
+         else (resolv_domain.stdout | trim
+               if resolv_domain.rc == 0 and resolv_domain.stdout | trim | length > 0
+               else '') }}
+
+- name: Prompt for FQDN
+  ansible.builtin.pause:
+    prompt: |
+
+      Domain Configuration
+      ====================
+      {% if detected_fqdn | length > 0 %}
+      Detected domain: {{ detected_fqdn }}
+      {% endif %}
+
+      Enter the base domain for service hostnames
+      (e.g. brianbeck.net)
+      {% if detected_fqdn | length > 0 %}
+      Press Enter to use: {{ detected_fqdn }}
+      {% endif %}
+  register: fqdn_input
+
+- name: Set FQDN fact
+  ansible.builtin.set_fact:
+    base_fqdn: "{{ fqdn_input.user_input | trim | default(detected_fqdn, true) }}"
+
+- name: Validate FQDN is not empty
+  ansible.builtin.assert:
+    that:
+      - base_fqdn | length > 0
+    fail_msg: "A base domain is required for ingress hostnames."
+
+# --- Prompt for hostnames ---
+
+- name: Set default hostnames
+  ansible.builtin.set_fact:
+    default_argocd_stage: "argocd-stage.{{ base_fqdn }}"
+    default_argocd_prod: "argocd-prod.{{ base_fqdn }}"
+    default_grafana_stage: "grafana-stage.{{ base_fqdn }}"
+    default_grafana_prod: "grafana-prod.{{ base_fqdn }}"
+    default_prometheus_stage: "prometheus-stage.{{ base_fqdn }}"
+    default_prometheus_prod: "prometheus-prod.{{ base_fqdn }}"
+
+- name: Prompt for Argo CD stage hostname
+  ansible.builtin.pause:
+    prompt: "Argo CD stage hostname [{{ default_argocd_stage }}]"
+  register: argocd_stage_input
+
+- name: Prompt for Argo CD prod hostname
+  ansible.builtin.pause:
+    prompt: "Argo CD prod hostname [{{ default_argocd_prod }}]"
+  register: argocd_prod_input
+
+- name: Prompt to enable Grafana ingress
+  ansible.builtin.pause:
+    prompt: |
+
+      Enable Grafana external access? (Y/n)
+  register: grafana_ingress_input
+
+- name: Set Grafana ingress fact
+  ansible.builtin.set_fact:
+    grafana_ingress_enabled: "{{ grafana_ingress_input.user_input | default('Y') | upper | trim != 'N' }}"
+
+- name: Prompt for Grafana hostnames
+  when: grafana_ingress_enabled | bool
+  block:
+    - name: Prompt for Grafana stage hostname
+      ansible.builtin.pause:
+        prompt: "Grafana stage hostname [{{ default_grafana_stage }}]"
+      register: grafana_stage_input
+
+    - name: Prompt for Grafana prod hostname
+      ansible.builtin.pause:
+        prompt: "Grafana prod hostname [{{ default_grafana_prod }}]"
+      register: grafana_prod_input
+
+- name: Prompt to enable Prometheus ingress
+  ansible.builtin.pause:
+    prompt: |
+
+      Enable Prometheus external access? (Y/n)
+  register: prometheus_ingress_input
+
+- name: Set Prometheus ingress fact
+  ansible.builtin.set_fact:
+    prometheus_ingress_enabled: "{{ prometheus_ingress_input.user_input | default('Y') | upper | trim != 'N' }}"
+
+- name: Prompt for Prometheus hostnames
+  when: prometheus_ingress_enabled | bool
+  block:
+    - name: Prompt for Prometheus stage hostname
+      ansible.builtin.pause:
+        prompt: "Prometheus stage hostname [{{ default_prometheus_stage }}]"
+      register: prometheus_stage_input
+
+    - name: Prompt for Prometheus prod hostname
+      ansible.builtin.pause:
+        prompt: "Prometheus prod hostname [{{ default_prometheus_prod }}]"
+      register: prometheus_prod_input
+
+# --- Set all hostname facts ---
+
+- name: Set hostname facts
+  ansible.builtin.set_fact:
+    ingress_enabled: true
+    argocd_hostname_stage: "{{ argocd_stage_input.user_input | trim | default(default_argocd_stage, true) }}"
+    argocd_hostname_prod: "{{ argocd_prod_input.user_input | trim | default(default_argocd_prod, true) }}"
+    grafana_hostname_stage: "{{ (grafana_stage_input.user_input | trim | default(default_grafana_stage, true)) if grafana_ingress_enabled | bool else '' }}"
+    grafana_hostname_prod: "{{ (grafana_prod_input.user_input | trim | default(default_grafana_prod, true)) if grafana_ingress_enabled | bool else '' }}"
+    prometheus_hostname_stage: "{{ (prometheus_stage_input.user_input | trim | default(default_prometheus_stage, true)) if prometheus_ingress_enabled | bool else '' }}"
+    prometheus_hostname_prod: "{{ (prometheus_prod_input.user_input | trim | default(default_prometheus_prod, true)) if prometheus_ingress_enabled | bool else '' }}"
+
+# --- Pi-hole DNS ---
+
+- name: Prompt to enable Pi-hole DNS registration
+  ansible.builtin.pause:
+    prompt: |
+
+      Pi-hole DNS Registration
+      ========================
+
+      Register service hostnames with Pi-hole DNS servers?
+      This creates local DNS records pointing to the Traefik
+      load balancer IP.
+
+      Enable Pi-hole DNS registration? (Y/n)
+  register: pihole_input
+
+- name: Set Pi-hole enabled fact
+  ansible.builtin.set_fact:
+    pihole_enabled: "{{ pihole_input.user_input | default('Y') | upper | trim != 'N' }}"
+
+- name: Collect Pi-hole configuration
+  when: pihole_enabled | bool
+  block:
+    - name: Check for existing vault secrets
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../vault/secrets.yml"
+      register: vault_file
+
+    - name: Load existing vault secrets
+      when: vault_file.stat.exists
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../vault/secrets.yml"
+        name: vault_secrets
+      ignore_errors: true
+      register: vault_load
+
+    - name: Set existing secrets facts
+      when: vault_file.stat.exists and vault_load is not failed
+      ansible.builtin.set_fact:
+        existing_pihole_primary_ip: "{{ vault_secrets.pihole_primary_ip | default('') }}"
+        existing_pihole_primary_token: "{{ vault_secrets.pihole_primary_token | default('') }}"
+        existing_pihole_secondary_ip: "{{ vault_secrets.pihole_secondary_ip | default('') }}"
+        existing_pihole_secondary_token: "{{ vault_secrets.pihole_secondary_token | default('') }}"
+
+    - name: Initialize empty secrets if no vault
+      when: not vault_file.stat.exists or vault_load is failed
+      ansible.builtin.set_fact:
+        existing_pihole_primary_ip: ""
+        existing_pihole_primary_token: ""
+        existing_pihole_secondary_ip: ""
+        existing_pihole_secondary_token: ""
+
+    - name: Prompt for primary Pi-hole IP
+      ansible.builtin.pause:
+        prompt: >-
+          Primary Pi-hole IP address
+          {{ '[' + existing_pihole_primary_ip + ']' if existing_pihole_primary_ip | length > 0 else '' }}
+      register: pihole_primary_ip_input
+
+    - name: Prompt for primary Pi-hole API token
+      ansible.builtin.pause:
+        prompt: >-
+          Primary Pi-hole API token
+          {{ '[stored - press Enter to keep]' if existing_pihole_primary_token | length > 0 else '' }}
+        echo: false
+      register: pihole_primary_token_input
+
+    - name: Prompt for secondary Pi-hole IP
+      ansible.builtin.pause:
+        prompt: "Secondary Pi-hole IP address (leave blank to skip)"
+      register: pihole_secondary_ip_input
+
+    - name: Prompt for secondary Pi-hole API token
+      when: pihole_secondary_ip_input.user_input | trim | length > 0
+      ansible.builtin.pause:
+        prompt: >-
+          Secondary Pi-hole API token
+          {{ '[stored - press Enter to keep]' if existing_pihole_secondary_token | length > 0 else '' }}
+        echo: false
+      register: pihole_secondary_token_input
+
+    - name: Set Pi-hole facts
+      ansible.builtin.set_fact:
+        pihole_primary_ip: "{{ pihole_primary_ip_input.user_input | trim | default(existing_pihole_primary_ip, true) }}"
+        pihole_primary_token: "{{ pihole_primary_token_input.user_input | trim | default(existing_pihole_primary_token, true) }}"
+        pihole_secondary_ip: "{{ pihole_secondary_ip_input.user_input | trim | default(existing_pihole_secondary_ip, true) }}"
+        pihole_secondary_token: "{{ (pihole_secondary_token_input.user_input | trim | default(existing_pihole_secondary_token, true)) if pihole_secondary_ip_input.user_input | trim | length > 0 else '' }}"
+
+    - name: Validate primary Pi-hole configuration
+      ansible.builtin.assert:
+        that:
+          - pihole_primary_ip | length > 0
+          - pihole_primary_token | length > 0
+        fail_msg: "Primary Pi-hole IP and API token are required."
+
+    # --- Save secrets to Ansible Vault ---
+
+    - name: Check for vault password file
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../.vault_pass"
+      register: vault_pass_file
+
+    - name: Create vault password file if not exists
+      when: not vault_pass_file.stat.exists
+      block:
+        - name: Prompt for vault password
+          ansible.builtin.pause:
+            prompt: |
+
+              Ansible Vault Password
+              ======================
+              A password is needed to encrypt Pi-hole API tokens.
+              This password will be saved to ansible/.vault_pass
+              (gitignored). You'll need it if you re-run bootstrap.
+
+              Enter vault password
+            echo: false
+          register: vault_pass_input
+
+        - name: Write vault password file
+          ansible.builtin.copy:
+            content: "{{ vault_pass_input.user_input }}"
+            dest: "{{ playbook_dir }}/../.vault_pass"
+            mode: "0600"
+
+    - name: Write secrets to vault file
+      ansible.builtin.copy:
+        content: |
+          ---
+          pihole_primary_ip: "{{ pihole_primary_ip }}"
+          pihole_primary_token: "{{ pihole_primary_token }}"
+          pihole_secondary_ip: "{{ pihole_secondary_ip }}"
+          pihole_secondary_token: "{{ pihole_secondary_token }}"
+        dest: "{{ playbook_dir }}/../vault/secrets.yml"
+        mode: "0600"
+
+    - name: Encrypt vault file
+      ansible.builtin.command:
+        cmd: >-
+          ansible-vault encrypt
+          --vault-password-file {{ playbook_dir }}/../.vault_pass
+          {{ playbook_dir }}/../vault/secrets.yml
+      changed_when: true
+      failed_when: false
+
+# --- Write ingress configuration to environments.yml ---
+
+- name: Append ingress configuration to environments file
+  ansible.builtin.blockinfile:
+    path: "{{ playbook_dir }}/../../environments.yml"
+    marker: "# {mark} INGRESS CONFIGURATION"
+    block: |
+      ingress_enabled: {{ ingress_enabled }}
+      traefik_enabled: {{ traefik_enabled }}
+      base_fqdn: "{{ base_fqdn }}"
+      argocd_hostname_stage: "{{ argocd_hostname_stage }}"
+      argocd_hostname_prod: "{{ argocd_hostname_prod }}"
+      grafana_ingress_enabled: {{ grafana_ingress_enabled | default(false) }}
+      grafana_hostname_stage: "{{ grafana_hostname_stage }}"
+      grafana_hostname_prod: "{{ grafana_hostname_prod }}"
+      prometheus_ingress_enabled: {{ prometheus_ingress_enabled | default(false) }}
+      prometheus_hostname_stage: "{{ prometheus_hostname_stage }}"
+      prometheus_hostname_prod: "{{ prometheus_hostname_prod }}"
+      pihole_enabled: {{ pihole_enabled }}
+      pihole_primary_ip: "{{ pihole_primary_ip | default('') }}"
+      pihole_secondary_ip: "{{ pihole_secondary_ip | default('') }}"
+
+- name: Display ingress configuration summary
+  ansible.builtin.debug:
+    msg: |
+      Ingress Configuration Summary
+      =============================
+      Base domain: {{ base_fqdn }}
+
+      Stage:
+        Argo CD:     {{ argocd_hostname_stage }}
+        {% if grafana_hostname_stage | length > 0 %}Grafana:     {{ grafana_hostname_stage }}{% endif %}
+
+        {% if prometheus_hostname_stage | length > 0 %}Prometheus:  {{ prometheus_hostname_stage }}{% endif %}
+
+
+      Prod:
+        Argo CD:     {{ argocd_hostname_prod }}
+        {% if grafana_hostname_prod | length > 0 %}Grafana:     {{ grafana_hostname_prod }}{% endif %}
+
+        {% if prometheus_hostname_prod | length > 0 %}Prometheus:  {{ prometheus_hostname_prod }}{% endif %}
+
+
+      Pi-hole DNS: {{ 'Enabled' if pihole_enabled | bool else 'Disabled' }}
+      {% if pihole_enabled | bool %}
+      Primary:     {{ pihole_primary_ip }}
+      {% if pihole_secondary_ip | length > 0 %}Secondary:   {{ pihole_secondary_ip }}{% endif %}
+
+      {% endif %}

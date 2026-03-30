@@ -4,8 +4,9 @@
 # This playbook:
 #   1. Discovers the environment model (single or multi-cluster)
 #   2. Discovers and verifies kubectl contexts
-#   3. Installs and configures Argo CD
-#   4. Applies AppProjects and Applications
+#   3. Optionally configures Traefik ingress and Pi-hole DNS
+#   4. Installs and configures Argo CD
+#   5. Applies AppProjects and Applications
 #
 # Usage:
 #   cd ansible
@@ -40,16 +41,21 @@
             1. Ask for your Git repository URL
             2. Ask which environment model you are using
             3. Discover and verify your kubectl contexts
-            4. Install Argo CD
-            5. Generate and apply AppProjects and Applications
-               for Falco, OPA Gatekeeper, and the Observability stack
+            4. Optionally configure Traefik ingress
+            5. Optionally configure Pi-hole DNS registration
+            6. Install Argo CD
+            7. Generate and apply AppProjects and Applications
+               for Traefik, Falco, OPA Gatekeeper, and
+               the Observability stack
 
           ================================================
 
   roles:
     - discover_environment
     - discover_contexts
+    - discover_ingress
     - argocd_bootstrap
+    - pihole_dns
 
   post_tasks:
     - name: Bootstrap complete
@@ -64,11 +70,20 @@
              - Falco (stage + prod)
              - OPA Gatekeeper (stage + prod)
              - Observability stack (stage + prod)
+          {% if traefik_enabled | default(false) | bool %}
+             - Traefik ingress (stage + prod)
+          {% endif %}
 
            Next steps:
-             1. Commit the generated argocd/ manifests:
-                git add argocd/ && git commit -m "Bootstrap: generate Argo CD manifests" && git push
-             2. Access Argo CD UI (see instructions above)
+             1. Commit the generated manifests:
+                git add argocd/ platform/ && git commit -m "Bootstrap: generate manifests" && git push
+             2. Access Argo CD UI:
+          {% if argocd_hostname_stage | default('') | length > 0 %}
+                Stage: https://{{ argocd_hostname_stage }}
+                Prod:  https://{{ argocd_hostname_prod }}
+          {% else %}
+                kubectl -n argocd port-forward svc/argocd-server 8080:80
+          {% endif %}
              3. Verify Applications are syncing
 
           ================================================

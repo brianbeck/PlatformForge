@@ -92,29 +92,55 @@
     - platform-stage.yml
     - platform-prod.yml
 
+- name: Build stage application list
+  ansible.builtin.set_fact:
+    stage_apps:
+      - falco.yml
+      - gatekeeper-core.yml
+      - gatekeeper-templates.yml
+      - gatekeeper-constraints.yml
+      - observability.yml
+    stage_apps_traefik: "{{ ['traefik.yml'] if traefik_enabled | default(false) | bool else [] }}"
+
+- name: Build prod application list
+  ansible.builtin.set_fact:
+    prod_apps:
+      - falco.yml
+      - gatekeeper-core.yml
+      - gatekeeper-templates.yml
+      - gatekeeper-constraints.yml
+      - observability.yml
+    prod_apps_traefik: "{{ ['traefik.yml'] if traefik_enabled | default(false) | bool else [] }}"
+
 - name: Template stage Applications
   ansible.builtin.template:
     src: "apps/stage/{{ item }}.j2"
     dest: "{{ playbook_dir }}/../../argocd/apps/stage/{{ item }}"
     mode: "0644"
-  loop:
-    - falco.yml
-    - gatekeeper-core.yml
-    - gatekeeper-templates.yml
-    - gatekeeper-constraints.yml
-    - observability.yml
+  loop: "{{ stage_apps + stage_apps_traefik }}"
 
 - name: Template prod Applications
   ansible.builtin.template:
     src: "apps/prod/{{ item }}.j2"
     dest: "{{ playbook_dir }}/../../argocd/apps/prod/{{ item }}"
     mode: "0644"
-  loop:
-    - falco.yml
-    - gatekeeper-core.yml
-    - gatekeeper-templates.yml
-    - gatekeeper-constraints.yml
-    - observability.yml
+  loop: "{{ prod_apps + prod_apps_traefik }}"
+
+# --- Template ingress values for observability (if enabled) ---
+
+- name: Template observability ingress values (stage)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.template:
+    src: "observability/overlays/stage/ingress-values.yaml.j2"
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/ingress-values.yaml"
+    mode: "0644"
+
+- name: Template observability ingress values (prod)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.template:
+    src: "observability/overlays/prod/ingress-values.yaml.j2"
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/ingress-values.yaml"
+    mode: "0644"
 
 # --- Install Argo CD to stage context ---
 

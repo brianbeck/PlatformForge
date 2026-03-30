@@ -1,0 +1,62 @@
+# Traefik Ingress Controller base Helm values
+# Deployed as a LoadBalancer service via MetalLB.
+
+# Deployment configuration
+deployment:
+  replicas: 1
+
+# Ingress class
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+
+# Service configuration -- MetalLB assigns an external IP
+service:
+  enabled: true
+  type: LoadBalancer
+
+# Entrypoints
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+    protocol: TCP
+    # Redirect HTTP to HTTPS
+    redirectTo:
+      port: websecure
+  websecure:
+    port: 8443
+    exposedPort: 443
+    protocol: TCP
+    tls:
+      enabled: true
+
+# Enable Traefik dashboard (accessible internally)
+ingressRoute:
+  dashboard:
+    enabled: false
+
+# Logs
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+
+# Resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 300m
+    memory: 128Mi
+
+# Providers
+providers:
+  kubernetesIngress:
+    enabled: true
+    allowExternalNameServices: true
+  kubernetesCRD:
+    enabled: true
+    allowExternalNameServices: true

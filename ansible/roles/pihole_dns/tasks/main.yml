@@ -1,0 +1,145 @@
+---
+# Register service hostnames with Pi-hole DNS servers.
+# Runs after Traefik is deployed and has a LoadBalancer IP.
+
+- name: Skip Pi-hole DNS if not enabled
+  when: not (pihole_enabled | default(false) | bool)
+  ansible.builtin.meta: end_role
+
+- name: Skip Pi-hole DNS if ingress not enabled
+  when: not (ingress_enabled | default(false) | bool)
+  ansible.builtin.meta: end_role
+
+# --- Load vault secrets ---
+
+- name: Load Pi-hole secrets from vault
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../vault/secrets.yml"
+    name: vault_secrets
+  vars:
+    ansible_vault_password_file: "{{ playbook_dir }}/../.vault_pass"
+
+- name: Set Pi-hole credentials
+  ansible.builtin.set_fact:
+    pihole_primary_ip: "{{ vault_secrets.pihole_primary_ip }}"
+    pihole_primary_token: "{{ vault_secrets.pihole_primary_token }}"
+    pihole_secondary_ip: "{{ vault_secrets.pihole_secondary_ip | default('') }}"
+    pihole_secondary_token: "{{ vault_secrets.pihole_secondary_token | default('') }}"
+
+# --- Get Traefik LoadBalancer IPs ---
+
+- name: Get Traefik LoadBalancer IP (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }}
+      -n traefik get svc traefik
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  register: traefik_ip_stage_raw
+  changed_when: false
+  retries: 10
+  delay: 15
+  until: traefik_ip_stage_raw.stdout | trim | length > 0
+
+- name: Get Traefik LoadBalancer IP (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }}
+      -n traefik get svc traefik
+      -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  register: traefik_ip_prod_raw
+  changed_when: false
+  retries: 10
+  delay: 15
+  until: traefik_ip_prod_raw.stdout | trim | length > 0
+
+- name: Set Traefik IP facts
+  ansible.builtin.set_fact:
+    traefik_ip_stage: "{{ traefik_ip_stage_raw.stdout | trim }}"
+    traefik_ip_prod: "{{ (traefik_ip_prod_raw.stdout | trim) if multi_cluster | bool else traefik_ip_stage_raw.stdout | trim }}"
+
+- name: Display Traefik IPs
+  ansible.builtin.debug:
+    msg: |
+      Traefik LoadBalancer IPs:
+        Stage: {{ traefik_ip_stage }}
+        Prod:  {{ traefik_ip_prod }}
+
+# --- Build DNS record list ---
+
+- name: Build DNS records list
+  ansible.builtin.set_fact:
+    dns_records: >-
+      {{
+        [
+          {'hostname': argocd_hostname_stage, 'ip': traefik_ip_stage},
+          {'hostname': argocd_hostname_prod, 'ip': traefik_ip_prod}
+        ]
+        + ([{'hostname': grafana_hostname_stage, 'ip': traefik_ip_stage}] if grafana_hostname_stage | default('') | length > 0 else [])
+        + ([{'hostname': grafana_hostname_prod, 'ip': traefik_ip_prod}] if grafana_hostname_prod | default('') | length > 0 else [])
+        + ([{'hostname': prometheus_hostname_stage, 'ip': traefik_ip_stage}] if prometheus_hostname_stage | default('') | length > 0 else [])
+        + ([{'hostname': prometheus_hostname_prod, 'ip': traefik_ip_prod}] if prometheus_hostname_prod | default('') | length > 0 else [])
+      }}
+
+# --- Register with primary Pi-hole ---
+
+- name: Register DNS records with primary Pi-hole
+  ansible.builtin.uri:
+    url: "http://{{ pihole_primary_ip }}/admin/api.php"
+    method: GET
+    body_format: form-urlencoded
+    body:
+      customdns: ""
+      action: add
+      domain: "{{ item.hostname }}"
+      ip: "{{ item.ip }}"
+      auth: "{{ pihole_primary_token }}"
+    status_code: [200]
+  loop: "{{ dns_records }}"
+  loop_control:
+    label: "{{ item.hostname }} -> {{ item.ip }}"
+  register: pihole_primary_result
+  failed_when: false
+  changed_when: >-
+    pihole_primary_result.json is defined and
+    pihole_primary_result.json.success is defined and
+    pihole_primary_result.json.success | bool
+
+# --- Register with secondary Pi-hole ---
+
+- name: Register DNS records with secondary Pi-hole
+  when: pihole_secondary_ip | length > 0 and pihole_secondary_token | length > 0
+  ansible.builtin.uri:
+    url: "http://{{ pihole_secondary_ip }}/admin/api.php"
+    method: GET
+    body_format: form-urlencoded
+    body:
+      customdns: ""
+      action: add
+      domain: "{{ item.hostname }}"
+      ip: "{{ item.ip }}"
+      auth: "{{ pihole_secondary_token }}"
+    status_code: [200]
+  loop: "{{ dns_records }}"
+  loop_control:
+    label: "{{ item.hostname }} -> {{ item.ip }}"
+  register: pihole_secondary_result
+  failed_when: false
+  changed_when: >-
+    pihole_secondary_result.json is defined and
+    pihole_secondary_result.json.success is defined and
+    pihole_secondary_result.json.success | bool
+
+- name: Display DNS registration summary
+  ansible.builtin.debug:
+    msg: |
+      Pi-hole DNS Registration Summary
+      =================================
+      {% for record in dns_records %}
+      {{ record.hostname }} -> {{ record.ip }}
+      {% endfor %}
+
+      Primary Pi-hole ({{ pihole_primary_ip }}): Done
+      {% if pihole_secondary_ip | length > 0 %}
+      Secondary Pi-hole ({{ pihole_secondary_ip }}): Done
+      {% endif %}
