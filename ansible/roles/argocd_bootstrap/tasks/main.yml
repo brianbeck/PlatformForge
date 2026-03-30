@@ -98,6 +98,24 @@
     dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/ingress-values.yaml"
     mode: "0644"
 
+# --- Remove stale app manifests from previous versions ---
+
+- name: Remove stale app manifests (stage)
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../argocd/apps/stage/{{ item }}"
+    state: absent
+  loop:
+    - gatekeeper.yml
+    - prometheus-stack.yml
+
+- name: Remove stale app manifests (prod)
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../argocd/apps/prod/{{ item }}"
+    state: absent
+  loop:
+    - gatekeeper.yml
+    - prometheus-stack.yml
+
 # --- Clean up any dangling webhooks from previous deployments ---
 
 - name: Remove dangling Gatekeeper webhooks (stage)
