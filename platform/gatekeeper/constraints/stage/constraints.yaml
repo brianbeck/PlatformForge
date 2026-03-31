@@ -2,6 +2,8 @@
 # All constraints use "dryrun" enforcement in stage so violations are
 # logged and audited but do not block deployments. This lets teams
 # see what would be blocked before prod enforcement kicks in.
+#
+# Platform namespaces are excluded for consistency with prod.
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sBlockPrivileged
@@ -19,9 +21,11 @@ spec:
       - kube-system
       - gatekeeper-system
       - argocd
-  parameters:
-    exemptImages:
-      - "falcosecurity/falco:*"
+      - falco
+      - falco-stage
+      - monitoring
+      - monitoring-stage
+      - traefik
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
@@ -39,6 +43,11 @@ spec:
       - kube-system
       - gatekeeper-system
       - argocd
+      - falco
+      - falco-stage
+      - monitoring
+      - monitoring-stage
+      - traefik
   parameters:
     labels:
       - key: "app.kubernetes.io/managed-by"
@@ -60,6 +69,11 @@ spec:
       - kube-system
       - gatekeeper-system
       - argocd
+      - falco
+      - falco-stage
+      - monitoring
+      - monitoring-stage
+      - traefik
   parameters:
     requireCPU: true
     requireMemory: true
@@ -80,6 +94,11 @@ spec:
       - kube-system
       - gatekeeper-system
       - argocd
+      - falco
+      - falco-stage
+      - monitoring
+      - monitoring-stage
+      - traefik
   parameters:
     exemptImages: []
 ---
@@ -99,7 +118,11 @@ spec:
       - kube-system
       - gatekeeper-system
       - argocd
+      - falco
       - falco-stage
+      - monitoring
+      - monitoring-stage
+      - traefik
   parameters:
     allowHostNetwork: false
     allowHostPID: false
@@ -121,6 +144,8 @@ spec:
       - kube-system
       - gatekeeper-system
       - argocd
-  parameters:
-    exemptImages:
-      - "falcosecurity/falco:*"
+      - falco
+      - falco-stage
+      - monitoring
+      - monitoring-stage
+      - traefik
