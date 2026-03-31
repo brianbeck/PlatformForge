@@ -1,40 +1,38 @@
 # PlatformForge
 
-GitOps-oriented platform services management for Kubernetes. Uses Ansible for bootstrap and Argo CD for declarative, Git-driven deployment.
+GitOps-oriented platform services management for Kubernetes. Uses Ansible for initial deployment and Argo CD for declarative, Git-driven ongoing management.
 
 PlatformForge is designed to work alongside [ClusterForge](https://github.com/brianbeck/ClusterForge), which provisions Kubernetes clusters on Proxmox. PlatformForge assumes clusters already exist and focuses on the platform services layer.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                       PlatformForge Repo                         │
-│                                                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────┐  │
-│  │   Ansible   │  │  Argo CD     │  │  Platform Services      │  │
-│  │  Bootstrap  │─>│  Manifests   │─>│  (Falco, Gatekeeper)    │  │
-│  │             │  │  (Projects,  │  │                         │  │
-│  │  - Discover │  │   Apps)      │  │  Helm values + overlays │  │
-│  │  - Install  │  │              │  │  Custom rules/policies  │  │
-│  │    Argo CD  │  │   Notif. cfg │  │  NetworkPolicies        │  │
-│  └─────────────┘  └──────────────┘  │  PrometheusRules        │  │
-│                                     └─────────────────────────┘  │
-│       One-time             Continuous GitOps sync                │
-└──────────────────────────────────────────────────────────────────┘
-        │                         │
-        ▼                         ▼
-┌────────────────┐  ┌───────────────────────────────────────┐
-│  Argo CD gets  │  │  Argo CD watches repo, reconciles,    │
-│  installed on  │  │  monitors health, sends notifications │
-│  cluster(s)    │  │  Prometheus scrapes Falco metrics     │
-└────────────────┘  └───────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                        PlatformForge Repo                          │
+│                                                                    │
+│  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
+│  │ Ansible Playbooks │  │  Argo CD     │  │  Platform Services   │ │
+│  │                   │  │  Manifests   │  │                      │ │
+│  │  bootstrap        │  │  (Projects,  │  │  Traefik (ingress)   │ │
+│  │  deploy-ingress   │  │   Apps)      │  │  Observability       │ │
+│  │  deploy-observ.   │─>│              │─>│  Gatekeeper (policy) │ │
+│  │  deploy-devsecops │  │  Generated   │  │  Falco (runtime sec) │ │
+│  │  deploy-cd        │  │  by Ansible  │  │                      │ │
+│  │  deploy-dns       │  │              │  │  Helm values/overlays│ │
+│  │  healthcheck      │  │              │  │  Rules/constraints   │ │
+│  │  teardown         │  │              │  │  IngressRoutes       │ │
+│  └──────────────────┘  └──────────────┘  └──────────────────────┘ │
+│                                                                    │
+│    Ansible installs           Argo CD manages ongoing              │
+│    services in order          GitOps reconciliation                │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-**Bootstrap flow:** Ansible runs once to discover your environment, install Argo CD, and register the initial Applications. After that, Argo CD takes over and everything is managed through Git.
+**Deployment flow:** Ansible installs all platform services via Helm in the correct dependency order. Each service is verified healthy before the next one starts. Once everything is running, Argo CD Applications are registered -- they immediately show `Synced/Healthy` because the live state already matches Git.
 
-**GitOps flow:** Push changes to this repo, Argo CD detects drift and reconciles. Stage auto-syncs; prod requires manual sync approval.
+**GitOps flow:** After initial deployment, push changes to this repo and Argo CD reconciles. Stage auto-syncs; prod requires manual sync approval.
 
-**Observability flow:** Prometheus scrapes Falco metrics via ServiceMonitor. PrometheusRules fire alerts on Falco health issues or critical security events. Argo CD Notifications alert on Application health degradation or sync failures.
+**Observability flow:** Prometheus scrapes metrics from all platform services via ServiceMonitor. PrometheusRules fire alerts on health issues. Argo CD Notifications alert on Application health degradation or sync failures.
 
 ## Environment Models
 
@@ -48,9 +46,7 @@ PlatformForge supports two deployment models:
 | **Namespace convention** | `falco-stage`, `falco-prod` | `falco` on each cluster |
 | **When to use** | Dev/small teams, cost-sensitive | Production, compliance, blast-radius isolation |
 
-**How to choose:** If you need hard isolation between environments (separate blast radius, compliance requirements, independent upgrade cycles), use Model B. If you're optimizing for simplicity and cost (development, small teams, non-regulated workloads), Model A is sufficient.
-
-The bootstrap playbook asks which model you're using and automatically patches Application manifests with the correct namespaces and server addresses.
+**How to choose:** If you need hard isolation between environments (separate blast radius, compliance requirements, independent upgrade cycles), use Model B. If you're optimizing for simplicity and cost, Model A is sufficient.
 
 ## Repository Structure
 
@@ -58,49 +54,57 @@ The bootstrap playbook asks which model you're using and automatically patches A
 PlatformForge/
 ├── README.md
 ├── .gitignore
-├── environments.yml             # Generated by bootstrap (gitignored)
+├── environments.yml              # Generated by bootstrap (gitignored)
 │
-├── ansible/                     # One-time bootstrap tooling
+├── ansible/
 │   ├── ansible.cfg
 │   ├── inventory/localhost.yml
 │   ├── group_vars/all.yml
+│   ├── vault/                    # Encrypted Pi-hole credentials (gitignored)
 │   ├── playbooks/
-│   │   └── bootstrap.yml        # Main entry point
+│   │   ├── bootstrap.yml         # Configuration only (interactive prompts)
+│   │   ├── deploy-all.yml        # Runs all deploy playbooks in order
+│   │   ├── deploy-ingress.yml    # Traefik
+│   │   ├── deploy-observability.yml  # Prometheus, Grafana, Alertmanager
+│   │   ├── deploy-devsecops.yml  # Gatekeeper + Falco
+│   │   ├── deploy-continuousdeployment.yml  # Argo CD + register apps
+│   │   ├── deploy-dns.yml        # Pi-hole DNS registration
+│   │   ├── healthcheck.yml       # Verify all services across clusters
+│   │   └── teardown.yml          # Clean removal of everything
 │   └── roles/
 │       ├── discover_environment/ # Asks Model A or B
 │       ├── discover_contexts/    # Finds and verifies kube contexts
-│       └── argocd_bootstrap/     # Prompts for repo URL, templates manifests,
-│                                #   installs Argo CD, applies manifests
+│       ├── discover_ingress/     # Traefik, hostnames, Pi-hole config
+│       ├── argocd_bootstrap/     # Templates for Argo CD manifests
+│       │   └── templates/
+│       │       ├── values.yml.j2           # Argo CD Helm values
+│       │       ├── projects/               # AppProject templates
+│       │       ├── apps/{stage,prod}/      # Application templates
+│       │       ├── ingressroutes/          # Traefik IngressRoute templates
+│       │       └── observability/          # Observability ingress values
+│       └── pihole_dns/           # Pi-hole v6 API DNS registration
 │
-├── argocd/                      # GENERATED by bootstrap (commit after running)
-│   ├── projects/                # AppProjects (templated with your repo URL)
-│   └── apps/
-│       ├── stage/               # Stage Applications (templated)
-│       └── prod/                # Prod Applications (templated)
+├── argocd/                       # GENERATED by deploy-continuousdeployment
+│   ├── projects/                 # AppProjects (commit after deploy)
+│   └── apps/{stage,prod}/        # Applications (commit after deploy)
 │
-└── platform/                    # Platform service configurations
-    ├── falco/
-    │   ├── base-values.yaml     # Helm values + custom rules + metrics
-    │   ├── rules/               # NetworkPolicies, PrometheusRules
-    │   ├── argo-events/         # Falco -> Argo Workflows integration
-    │   └── overlays/
-    │       ├── stage/values.yaml
-    │       └── prod/values.yaml
+└── platform/                     # Platform service configurations
+    ├── traefik/
+    │   ├── base-values.yaml
+    │   └── overlays/{stage,prod}/values.yaml
     ├── observability/
-    │   ├── base-values.yaml     # Prometheus, Alertmanager, Grafana
-    │   └── overlays/
-    │       ├── stage/values.yaml
-    │       └── prod/values.yaml # PVC storage, 2 replicas, 30d retention
-    └── gatekeeper/
-        ├── base-values.yaml
-        ├── networkpolicy.yaml
-        ├── constraints/
-        │   ├── templates/       # ConstraintTemplates (shared)
-        │   ├── stage/           # Constraints (dryrun)
-        │   └── prod/            # Constraints (deny)
-        └── overlays/
-            ├── stage/values.yaml
-            └── prod/values.yaml
+    │   ├── base-values.yaml      # Prometheus, Alertmanager, Grafana
+    │   └── overlays/{stage,prod}/values.yaml
+    ├── gatekeeper/
+    │   ├── base-values.yaml
+    │   ├── templates/            # ConstraintTemplates (shared)
+    │   ├── constraints/{stage,prod}/  # Constraints (dryrun/deny)
+    │   └── overlays/{stage,prod}/values.yaml
+    └── falco/
+        ├── base-values.yaml      # Helm values + custom rules
+        ├── rules/                # PrometheusRules, NetworkPolicies
+        ├── argo-events/          # Falco -> Argo Workflows integration
+        └── overlays/{stage,prod}/values.yaml
 ```
 
 ## Prerequisites
@@ -111,58 +115,80 @@ PlatformForge/
 - `ansible` installed (`pip install ansible`)
 - `git` installed
 - Git repository accessible from your cluster(s)
-- Prometheus Operator is deployed as part of this repo (Observability Stack)
 - For Falco -> Argo Workflows: Argo Events and Argo Workflows installed (optional)
 
 ## Quick Start
 
-### 1. Clone and bootstrap
+### 1. Configure
+
+Run the bootstrap to set up your environment configuration (no services are installed):
 
 ```bash
 git clone <your-platformforge-repo-url>
-cd PlatformForge
-cd ansible && ansible-playbook playbooks/bootstrap.yml
+cd PlatformForge/ansible
+ansible-playbook playbooks/bootstrap.yml
 ```
 
-The playbook will:
-1. Check that `kubectl`, `helm`, and `git` are installed
-2. Prompt for your PlatformForge Git repository URL (validates it's reachable)
-3. Ask which environment model you're using (A or B)
-4. List your kubectl contexts and ask you to verify them
-5. Generate all Argo CD manifests from templates (AppProjects, Applications)
-6. Install Argo CD via Helm with Notifications enabled
-7. Dry-run validate all manifests before applying
-8. Apply AppProjects and Applications
+The bootstrap prompts for:
+1. Git repository URL
+2. Environment model (A or B)
+3. Kubectl contexts for stage and prod
+4. Traefik ingress (enable/disable)
+5. Service hostnames (Argo CD, Grafana, Prometheus)
+6. Pi-hole DNS registration (enable/disable, credentials stored in Ansible Vault)
 
-### 2. Commit the generated manifests
+All answers are saved to `environments.yml` and reused on re-runs.
 
-The bootstrap generates Argo CD manifests in `argocd/`. Commit and push them so Argo CD can read them from Git:
+### 2. Deploy
+
+Deploy all services in the correct order:
 
 ```bash
-cd ..
-git add argocd/
-git commit -m "Bootstrap: generate Argo CD manifests"
+ansible-playbook playbooks/deploy-all.yml
+```
+
+Or deploy individually:
+
+```bash
+ansible-playbook playbooks/deploy-ingress.yml           # Traefik
+ansible-playbook playbooks/deploy-observability.yml      # Prometheus, Grafana, Alertmanager
+ansible-playbook playbooks/deploy-devsecops.yml          # Gatekeeper + Falco
+ansible-playbook playbooks/deploy-continuousdeployment.yml  # Argo CD + register apps
+ansible-playbook playbooks/deploy-dns.yml                # Pi-hole DNS
+```
+
+Each playbook is idempotent and can be re-run safely. They can also be run independently -- if you only want Traefik and Argo CD, skip the others.
+
+### 3. Commit generated manifests
+
+After deployment, commit the generated Argo CD manifests so Argo CD can manage them via Git:
+
+```bash
+cd /path/to/PlatformForge
+git add argocd/ platform/
+git commit -m "Generate Argo CD manifests"
 git push
 ```
 
-### 3. Post-bootstrap setup
-
-1. **Change the Argo CD admin password** and consider disabling the admin account after configuring SSO
-2. **Configure Argo CD Notifications** -- edit the `services` block in the Argo CD Helm values to add your Slack token, webhook URL, or other destination
-3. **Verify Prometheus is scraping Falco** -- check that the ServiceMonitor is picked up: `kubectl get servicemonitor -A`
-
 ### 4. Verify
 
-```bash
-# Port-forward to Argo CD UI
-kubectl -n argocd port-forward svc/argocd-server 8080:443
+Run the health check:
 
-# Get initial admin password
+```bash
+ansible-playbook playbooks/healthcheck.yml
+```
+
+Or access the UIs directly (if ingress is enabled):
+- **Argo CD Stage:** https://argocd-stage.yourdomain.com
+- **Argo CD Prod:** https://argocd-prod.yourdomain.com
+- **Grafana Stage:** https://grafana-stage.yourdomain.com
+- **Prometheus Stage:** https://prometheus-stage.yourdomain.com
+
+Get the Argo CD admin password:
+```bash
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d
 ```
-
-Open https://localhost:8080 and verify that all Applications appear and are syncing.
 
 ### 5. Iterate via GitOps
 
@@ -174,247 +200,190 @@ git push
 # Argo CD auto-syncs stage; manually sync prod via UI or CLI
 ```
 
+## Playbook Reference
+
+| Playbook | Purpose | Prerequisites |
+|---|---|---|
+| `bootstrap.yml` | Interactive configuration (no install) | Clusters accessible via kubectl |
+| `deploy-all.yml` | Deploy everything in order | `bootstrap.yml` |
+| `deploy-ingress.yml` | Install Traefik ingress controller | `bootstrap.yml` |
+| `deploy-observability.yml` | Install Prometheus, Grafana, Alertmanager | `bootstrap.yml` |
+| `deploy-devsecops.yml` | Install OPA Gatekeeper + Falco | `bootstrap.yml` |
+| `deploy-continuousdeployment.yml` | Install Argo CD, register all apps | `bootstrap.yml`, other deploys |
+| `deploy-dns.yml` | Register hostnames with Pi-hole | `bootstrap.yml`, `deploy-ingress.yml` |
+| `healthcheck.yml` | Verify all services across both clusters | Any services deployed |
+| `teardown.yml` | Clean removal of all services | Any services deployed |
+
+### Deployment order
+
+`deploy-all.yml` runs the playbooks in this order:
+
+```
+1. deploy-ingress.yml        (Traefik -- needed for external access)
+2. deploy-observability.yml  (Prometheus CRDs needed by Falco ServiceMonitors)
+3. deploy-devsecops.yml      (Gatekeeper + Falco)
+4. deploy-continuousdeployment.yml  (Argo CD -- registered last so all apps show Synced)
+5. deploy-dns.yml            (Pi-hole -- needs Traefik LB IPs)
+```
+
+Each step installs via Helm with `--wait`, ensuring services are healthy before proceeding. This eliminates the race conditions that occur when Argo CD deploys everything asynchronously.
+
 ## Teardown
 
-To cleanly remove all PlatformForge components from your clusters:
+To cleanly remove all PlatformForge components:
 
 ```bash
 cd ansible
 ansible-playbook playbooks/teardown.yml
 ```
 
-The teardown playbook:
+The teardown:
 1. Confirms you want to proceed
 2. Deletes all Argo CD Applications
-3. Removes Gatekeeper admission webhooks (prevents namespace deletion from hanging)
-4. Removes Gatekeeper ConstraintTemplates
-5. Uninstalls Argo CD via Helm
-6. Deletes all platform namespaces
-7. Force-removes any stuck namespaces by clearing finalizers
-8. Repeats for the prod cluster (Model B)
+3. Removes Traefik cluster-scoped resources (ClusterRoles, IngressClass)
+4. Removes Gatekeeper admission webhooks and ConstraintTemplates
+5. Removes observability webhooks and cluster roles
+6. Uninstalls all Helm releases
+7. Deletes all platform namespaces
+8. Force-removes any stuck namespaces by clearing finalizers
+9. Repeats for the prod cluster (Model B)
 
 ## Platform Services
 
-### Falco
+### Traefik (Ingress Controller)
+
+Routes external traffic to platform services via Traefik IngressRoute CRDs.
+
+**What's included:**
+- LoadBalancer service via MetalLB
+- HTTP-to-HTTPS redirect
+- Fixed IngressClass name (`traefik`) across all environments
+- IngressRoutes for Argo CD, Grafana, and Prometheus
+- Stage: 1 replica, debug logging
+- Prod: 2 replicas, warn logging
+
+### Falco (Runtime Security)
 
 Runtime security monitoring using eBPF. Detects suspicious behavior in containers and on the host.
 
 **What's included:**
-- Modern eBPF driver (no kernel module required; needs kernel 5.8+)
-- Custom rules that supplement (not replace) Falco defaults
-- Detections for: shell in container, sensitive file reads, unexpected outbound connections, privilege escalation, crypto mining, unexpected K8s API access
-- Falcosidekick enabled for alert forwarding
-- Stage gets verbose logging; prod gets WARNING-and-above only
-- Prometheus metrics via ServiceMonitor
-- PrometheusRules for alerting on Falco health and critical security events
-- NetworkPolicies restricting Falco and Falcosidekick traffic
-- Argo CD health monitoring and Notifications on degradation
+- Modern eBPF driver (kernel 5.8+; ClusterForge default images meet this requirement)
+- Custom rules supplementing Falco defaults: shell in container, sensitive file reads, unexpected outbound connections, privilege escalation, crypto mining, unexpected K8s API access
+- Falcosidekick for alert forwarding
+- Prometheus metrics and PrometheusRules for alerting
+- NetworkPolicies restricting traffic
 
-**Customizing rules:** Edit `platform/falco/base-values.yaml` under the `customRules` key. Use `append: true` to modify existing Falco rules without replacing them. Macros are defined before the rules that reference them.
+**Customizing rules:** Edit `platform/falco/base-values.yaml` under the `customRules` key.
 
-**Prometheus metrics:** Falco exposes metrics on port 8765. The ServiceMonitor is enabled by default. Alerts fire for:
-- Falco DaemonSet pods unavailable for 5+ minutes
-- No Falco events detected for 15+ minutes (possible crash)
-- Critical-priority security events
-- High event rate (possible attack or noisy rules)
-- Kernel event drops (needs larger buffer or more resources)
+### OPA Gatekeeper (Policy Enforcement)
 
-**Argo Workflows integration:** See `platform/falco/argo-events/` for manifests that connect Falco alerts to Argo Workflows for automated incident response. Requires Argo Events and Argo Workflows installed in-cluster.
-
-### OPA Gatekeeper
-
-Kubernetes admission controller for policy enforcement. Uses ConstraintTemplates (policy logic in Rego) and Constraints (instances with parameters).
+Kubernetes admission controller using ConstraintTemplates (Rego) and Constraints.
 
 **What's included:**
-- 6 ConstraintTemplates covering core Kubernetes security hygiene:
-  - `K8sBlockPrivileged` -- no privileged containers
-  - `K8sRequiredLabels` -- enforce standard labels on workloads
-  - `K8sContainerLimits` -- require CPU and memory limits
-  - `K8sBlockLatestTag` -- no `:latest` image tags
-  - `K8sBlockHostNamespace` -- no hostPID/hostIPC/hostNetwork
-  - `K8sRequireNonRoot` -- containers must run as non-root
-- Stage uses `dryrun` enforcement (log violations, don't block)
-- Prod uses `deny` enforcement (block non-compliant resources)
-- System namespaces (kube-system, argocd, gatekeeper-system) excluded
-- Falco exempted from privileged/nonroot constraints (needs host access)
-- Prod: fail-closed webhook, 3 replicas, PDB of 2
-- Stage: fail-open webhook, debug logging
-- NetworkPolicies restricting Gatekeeper traffic
+- 6 ConstraintTemplates: `K8sBlockPrivileged`, `K8sRequiredLabels`, `K8sContainerLimits`, `K8sBlockLatestTag`, `K8sBlockHostNamespace`, `K8sRequireNonRoot`
+- Stage: `dryrun` enforcement (log only)
+- Prod: `deny` enforcement (block non-compliant resources)
+- All platform namespaces excluded from constraints
+- Gatekeeper webhooks set to `Ignore` failure policy to prevent cluster blocking
 
-**Adding policies:** Create a new ConstraintTemplate in `platform/gatekeeper/constraints/templates/`, then add corresponding Constraints in `constraints/stage/` and `constraints/prod/`. Use sync-wave annotations (`"1"` for templates, `"2"` for constraints) to ensure correct ordering.
+**Adding policies:** Create a ConstraintTemplate in `platform/gatekeeper/templates/`, then add Constraints in `constraints/stage/` and `constraints/prod/`.
 
 ### Observability Stack (kube-prometheus-stack)
 
-Full monitoring stack: Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics, and the Prometheus Operator.
+Full monitoring: Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics, Prometheus Operator.
 
 **What's included:**
-- Prometheus configured to auto-discover all ServiceMonitors and PrometheusRules (no label filtering)
-- Default Kubernetes alerting rules enabled (API server, kubelet, etcd, node, storage)
-- Grafana with sidecar for auto-loading dashboards from ConfigMaps
-- Alertmanager with routing for critical vs non-critical alerts
-- Stage: 7-day retention, ephemeral storage, smaller footprint
-- Prod: 30-day retention, 50Gi PVC, 2 Prometheus replicas, 2 Alertmanager replicas
+- Auto-discovers all ServiceMonitors and PrometheusRules
+- Default Kubernetes alerting rules
+- Grafana with dashboard auto-loading
+- Stage: 7-day retention, ephemeral storage
+- Prod: 30-day retention, 2 Prometheus replicas, 2 Alertmanager replicas
 
-**Configuring alert destinations:** Edit `platform/observability/overlays/prod/values.yaml` and uncomment the Alertmanager `slack_configs` section (or add PagerDuty, email, etc.).
+### Argo CD (Continuous Deployment)
 
-**Remote write:** For cross-cluster visibility and long-term retention, uncomment the `remoteWrite` section in the prod overlay and point it at your Thanos, Mimir, or Grafana Cloud endpoint.
+GitOps controller that manages all platform services after initial Ansible deployment.
 
-**Accessing Grafana:**
-```bash
-kubectl -n <monitoring-namespace> port-forward svc/observability-grafana 3000:80
-# Default user: admin, password from secret:
-kubectl -n <monitoring-namespace> get secret observability-grafana \
-  -o jsonpath='{.data.admin-password}' | base64 -d
-```
-
-## Observability
-
-### Falco Metrics in Prometheus
-
-Falco metrics are scraped by an in-cluster Prometheus via ServiceMonitor. This is the recommended approach because:
-- Falco runs as a DaemonSet on every node; scraping from outside the cluster is impractical
-- Low latency for security-critical alerting
-- For long-term storage and cross-cluster visibility, configure Prometheus remote-write to an external backend (Thanos, Mimir, Grafana Cloud)
-
-### Argo CD Notifications
-
-All Applications have notification annotations for health degradation and sync failure alerts. Configure your notification destination in the Argo CD Helm values:
-
-```yaml
-# In ansible/roles/argocd_bootstrap/templates/values.yml.j2
-# Under configs.notifications.services, uncomment and configure:
-services:
-  service.slack: |
-    token: $slack-token
-    channel: platform-alerts
-```
-
-### Falco -> Argo Workflows
-
-For automated incident response, the `platform/falco/argo-events/` directory contains:
-- **EventSource** -- webhook endpoint that receives Falcosidekick alerts
-- **Sensor** -- filters for WARNING+ events and triggers workflows
-- **WorkflowTemplate** -- customizable incident response (log, gather context, remediate)
-
-Enable the Falcosidekick webhook output in your Falco overlay values to connect the pipeline.
+**What's included:**
+- Separate AppProjects per environment with scoped RBAC
+- Argo CD Notifications with triggers for health degradation and sync failures
+- Stage: auto-sync enabled
+- Prod: manual sync required (human gate)
 
 ## Design Decisions
 
-**Why Ansible for bootstrap?** Argo CD can't install itself. Ansible provides an idempotent, repeatable way to get Argo CD running. After bootstrap, Ansible's job is done.
+**Why Ansible installs first, then Argo CD takes over?** Services have hard dependencies (Prometheus CRDs must exist before ServiceMonitors, Gatekeeper must be running before constraints can be applied, etc.). Ansible controls the install order with explicit waits. Argo CD then manages ongoing drift reconciliation and updates.
 
-**Why multi-source Applications?** Argo CD multi-source lets us reference a Helm chart from its upstream repo while pulling values from this Git repo. This avoids vendoring charts and keeps our repo focused on configuration.
+**Why Traefik IngressRoutes instead of Kubernetes Ingress?** Traefik v3 forces HTTPS on backend connections when using standard Kubernetes Ingress on the `websecure` entrypoint. IngressRoutes give explicit control over the backend `scheme: http`, which is needed since our services terminate TLS at Traefik, not at the application.
 
-**Why explicit Applications over ApplicationSets?** With two services and two environments, explicit Applications are clearer and easier to reason about. The directory structure (`argocd/apps/{stage,prod}/`) is designed so that migrating to ApplicationSets later is straightforward.
+**Why modular playbooks?** Individual deploy playbooks let you install only what you need, re-run a specific component without affecting others, and debug issues in isolation. `deploy-all.yml` provides the full experience when you want everything.
 
-**Why shared ConstraintTemplates with per-environment Constraints?** ConstraintTemplates define the policy logic and are environment-agnostic. Constraints are instances that set enforcement mode and parameters per environment. This lets stage use `dryrun` while prod uses `deny` from the same policy definitions.
+**Why exclude platform namespaces from Gatekeeper constraints?** Platform services like Falco need privileged access and root containers for eBPF. Monitoring pods may not set resource limits. These are managed by PlatformForge, not application teams. Gatekeeper constraints target application workloads in non-platform namespaces.
 
-**Why sync-wave annotations?** Gatekeeper Constraints reference ConstraintTemplates. Argo CD sync waves ensure templates (wave 1) are created before constraints (wave 2), avoiding race conditions during initial sync.
-
-**Why separate AppProjects per environment?** AppProjects scope what each environment's Applications can do. Namespace resources are whitelisted to only what Falco and Gatekeeper actually need (no wildcards). Prod's project has sync windows requiring manual sync.
-
-**Why manual sync for prod?** Prod Applications do not auto-sync. Changes must be explicitly synced via the Argo CD UI or CLI, providing a human gate before production changes take effect.
-
-**Why in-cluster Prometheus for Falco?** Falco is a DaemonSet exposing per-node metrics. In-cluster scraping is lower latency and doesn't require exposing metrics endpoints externally. Use remote-write for long-term storage.
-
-**Why NetworkPolicies?** Defense in depth. Even though Falco and Gatekeeper are security tools, restricting their network access limits blast radius if they're compromised. Falco pods can only reach the K8s API and be scraped by Prometheus. Gatekeeper pods only accept webhook calls and reach the API server.
+**Why Pi-hole v6 API?** Pi-hole v6 uses session-based authentication instead of API tokens. Credentials are stored encrypted in Ansible Vault. DNS records are registered after Traefik has a LoadBalancer IP.
 
 ## Troubleshooting
 
-### Argo CD Application stuck in "Syncing"
+### Health check shows failures
 
 ```bash
-# Check Application status
-argocd app get <app-name> --show-operation
-
-# Check for sync errors
-kubectl -n argocd logs deployment/argocd-application-controller | grep <app-name>
+ansible-playbook playbooks/healthcheck.yml
 ```
 
-Common causes: multi-source resolution failure (check repo URL), Helm values file not found (check `$values` ref), CRD not yet available (check sync-wave ordering).
+The health check reports PASS/WARN/FAIL for each component. Re-run the specific deploy playbook for any failed component.
 
-### Gatekeeper constraints not enforcing
+### Gatekeeper blocking pod creation
 
+If Gatekeeper denies pod creation in a platform namespace:
 ```bash
-# Check constraint status and violations
-kubectl get k8sblockprivileged -o yaml
-
-# Check if enforcementAction is correct
-kubectl get constraints -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.enforcementAction}{"\n"}{end}'
-
-# Check Gatekeeper audit results
-kubectl get constrainttemplate -o yaml | grep -A5 status
+kubectl get events -n <namespace> --sort-by='.lastTimestamp' | grep denied
 ```
+Add the namespace to `excludedNamespaces` in both `constraints/stage/constraints.yaml` and `constraints/prod/constraints.yaml`.
 
-If constraints show no violations, check that the `match.kinds` covers the resource type you're testing. Constraints matching `Pod` only catch direct Pod creation, not Pods created by Deployments (use Gatekeeper's `config.match` to expand).
+### Observability stack stuck during install
 
-### Falco not starting / rules not loading
-
+The kube-prometheus-stack has pre-install webhook hooks that can get stuck. Clean up and retry:
 ```bash
-# Check Falco pod logs
-kubectl -n <falco-namespace> logs ds/falco
-
-# Common issues:
-# - "unknown macro" -> macro defined after the rule that uses it (fixed in this repo)
-# - "could not load rules" -> YAML syntax error in customRules
-# - "eBPF probe not found" -> kernel < 5.8, switch driver.kind to kmod or ebpf
+kubectl delete jobs --all -n monitoring --force --grace-period=0
+kubectl delete secrets -n monitoring -l owner=helm
+ansible-playbook playbooks/deploy-observability.yml
 ```
 
-### Prometheus not scraping Falco
+### Argo CD shows Unknown sync status
 
+Push generated manifests to Git so Argo CD can compare:
 ```bash
-# Verify ServiceMonitor exists
-kubectl get servicemonitor -A | grep falco
-
-# Check Prometheus targets
-kubectl -n monitoring port-forward svc/prometheus-operated 9090:9090
-# Open http://localhost:9090/targets and search for falco
-
-# Verify labels match -- the ServiceMonitor has release: prometheus
-# Your Prometheus instance must select ServiceMonitors with this label
+git add argocd/ platform/ && git commit -m "Update manifests" && git push
 ```
 
-### Notifications not firing
+### Falco pods not starting
 
+Check init container logs for network/download issues:
 ```bash
-# Check if notifications controller is running
-kubectl -n argocd get pods | grep notifications
-
-# Check notification logs
-kubectl -n argocd logs deployment/argocd-notifications-controller
-
-# Verify Application has notification annotations
-kubectl -n argocd get app <app-name> -o jsonpath='{.metadata.annotations}'
+kubectl -n <falco-namespace> logs <falco-pod> -c falcoctl-artifact-install
 ```
-
-Notifications require a configured service (Slack, webhook, etc.) in the Argo CD Helm values. The default install has triggers and templates but no service destination.
+Ensure the Falco NetworkPolicy allows HTTPS egress (port 443).
 
 ## Assumptions and Tradeoffs
 
 **Assumptions:**
-- Kubernetes clusters are already provisioned and accessible via kubectl
-- Helm v3 is available on the bootstrap machine
-- The Git repo is network-accessible from the cluster(s) for Argo CD to poll
-- No existing Argo CD installation on the target cluster(s)
-- Kernel 5.8+ with BTF for Falco modern eBPF driver. ClusterForge default images meet this requirement. If running on a non-ClusterForge cluster with an older kernel, change `driver.kind` to `kmod` or `ebpf` in `platform/falco/base-values.yaml`
-- Observability Stack deploys the Prometheus Operator, which processes ServiceMonitor and PrometheusRule CRDs from Falco and Gatekeeper. Sync-wave annotations ensure observability (wave 0) deploys before Falco and Gatekeeper (wave 1), so CRDs exist when needed
-- ClusterForge clusters use `local-path` as the default StorageClass (node-local, no replication). Prometheus prod PVCs will work but data is tied to a single node. For HA, consider adding Longhorn or Rook/Ceph
+- Kubernetes clusters are provisioned and accessible via kubectl
+- Helm v3 available on the bootstrap machine
+- Git repo is network-accessible from cluster(s)
+- Kernel 5.8+ with BTF for Falco (ClusterForge default images meet this)
+- ClusterForge clusters use `local-path` StorageClass (node-local, no replication)
 
 **Tradeoffs:**
-- Falco custom rules are embedded in Helm values rather than separate ConfigMaps. This is simpler but means rule changes trigger a Helm upgrade. For high-frequency rule iteration, consider moving rules to standalone ConfigMaps.
-- Gatekeeper Constraints are duplicated between stage and prod (differing only in `enforcementAction`). This is intentional for clarity but could be DRY'd up with Kustomize patches later.
-- The bootstrap generates `environments.yml` but it's gitignored by default. You may want to commit it for team visibility.
-- Chart versions are pinned. Update them periodically (consider Renovate or Dependabot).
-- Argo Events + Argo Workflows integration is provided as manifests but not managed by Argo CD Applications. Add them as platform services when you're ready.
+- Falco custom rules are embedded in Helm values. For high-frequency rule iteration, consider standalone ConfigMaps.
+- Gatekeeper Constraints are duplicated between stage and prod. Intentional for clarity.
+- Grafana persistence disabled on prod due to `local-path` ReadWriteOnce limitation. Enable when using distributed storage.
+- Chart versions are pinned. Update periodically (consider Renovate or Dependabot).
 
-## Next Steps / Recommended Improvements
+## Component Versions
 
-1. **Add an App-of-Apps pattern:** Create a root Application that manages all other Applications, so Argo CD fully manages itself after bootstrap.
-2. **Migrate to ApplicationSets:** Once you have more services or environments, use ApplicationSets with Git directory generators.
-3. **Secret management:** Integrate Sealed Secrets, SOPS, or External Secrets Operator for managing sensitive values.
-4. **Add more platform services:** cert-manager, external-dns, ingress-nginx, monitoring stack.
-5. **CI validation:** Add a CI pipeline that runs `helm template`, `kubeconform`, and `opa test` on changes.
-6. **Argo CD SSO:** Configure Argo CD with OIDC/Dex for team access instead of the admin password.
-7. **Falcosidekick destinations:** Configure alert routing to Slack, PagerDuty, or your SIEM via Falcosidekick config.
-8. **Gatekeeper external data:** Integrate External Data Provider for image signature verification or vulnerability scanning data in policies.
-9. **Prometheus remote-write:** Configure Prometheus to remote-write Falco metrics to Thanos, Mimir, or Grafana Cloud for long-term retention.
-10. **Argo Events + Workflows as platform services:** Add Argo Events and Argo Workflows as GitOps-managed Applications for the full automated incident response pipeline.
+| Component | Chart Version | App Version |
+|---|---|---|
+| Traefik | 39.0.7 | v3.6.12 |
+| kube-prometheus-stack | 82.15.1 | v0.89.0 |
+| OPA Gatekeeper | 3.22.0 | v3.22.0 |
+| Falco | 8.0.1 | 0.43.0 |
+| Argo CD | 9.4.17 | v3.3.6 |
