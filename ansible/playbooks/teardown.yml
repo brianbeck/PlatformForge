@@ -246,11 +246,13 @@
       failed_when: false
 
     # ============================================================
-    # PROD CLUSTER TEARDOWN (Model B only)
+    # PROD CLUSTER TEARDOWN
+    # Cluster-scoped singletons: only on separate prod cluster (Model B)
+    # Namespace-scoped services: always (both Model A and B)
     # ============================================================
 
     - name: "PROD: Delete all Argo CD Applications"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton: skip in Model A
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} -n argocd delete applications --all --wait=false"
       register: result
@@ -263,7 +265,7 @@
         seconds: 10
 
     - name: "PROD: Remove Traefik cluster-scoped resources"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
@@ -272,101 +274,90 @@
       failed_when: false
 
     - name: "PROD: Remove Traefik IngressClass"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete ingressclass traefik --ignore-not-found"
       changed_when: false
       failed_when: false
 
     - name: "PROD: Remove Gatekeeper validating webhooks"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration {{ item }} --ignore-not-found"
       loop:
         - gatekeeper-validating-webhook-configuration
-      changed_when: "'deleted' in result.stdout"
+      changed_when: false
       failed_when: false
-      register: result
 
     - name: "PROD: Remove Gatekeeper mutating webhooks"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete mutatingwebhookconfiguration {{ item }} --ignore-not-found"
       loop:
         - gatekeeper-mutating-webhook-configuration
-      changed_when: "'deleted' in result.stdout"
+      changed_when: false
       failed_when: false
-      register: result
 
     - name: "PROD: Remove Gatekeeper labeled webhooks"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete validatingwebhookconfiguration -l gatekeeper.sh/system=yes --ignore-not-found"
       changed_when: false
       failed_when: false
 
-    - name: "PROD: Remove Prometheus/Observability webhooks (all naming variants)"
-      when: multi_cluster | bool
+    - name: "PROD: Remove Prometheus/Observability webhooks"
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
           -l app.kubernetes.io/instance=observability-prod --ignore-not-found;
           kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
           -l app.kubernetes.io/instance=prometheus-stack-prod --ignore-not-found;
-          kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
-          prometheus-stack-prod-kub-admission --ignore-not-found;
-          kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
-          observability-prod-kube-p-admission --ignore-not-found
+          true
       changed_when: false
       failed_when: false
 
     - name: "PROD: Remove orphaned cluster roles from observability stack"
-      when: multi_cluster | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
           -l app.kubernetes.io/instance=observability-prod --ignore-not-found;
           kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
-          -l app.kubernetes.io/instance=prometheus-stack-prod --ignore-not-found
+          -l app.kubernetes.io/instance=prometheus-stack-prod --ignore-not-found;
+          true
       changed_when: false
       failed_when: false
 
     - name: "PROD: Remove Gatekeeper ConstraintTemplates"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Cluster-scoped: already removed in Model A stage cleanup
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete constrainttemplates --all --ignore-not-found"
       changed_when: false
       failed_when: false
 
     - name: "PROD: Uninstall Argo CD Helm release"
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Singleton
       ansible.builtin.command:
         cmd: "helm --kube-context {{ prod_context }} uninstall argocd -n argocd --wait"
       changed_when: false
       failed_when: false
 
-    - name: "PROD: Delete Helm hook jobs in all platform namespaces"
-      when: multi_cluster | bool
+    - name: "PROD: Delete Helm hook jobs in prod namespaces"
       ansible.builtin.shell:
-        cmd: "kubectl --context {{ prod_context }} delete jobs --all -n {{ item }} --force --ignore-not-found 2>/dev/null"
+        cmd: "kubectl --context {{ prod_context }} delete jobs --all -n {{ item }} --force --ignore-not-found 2>/dev/null; true"
       loop:
-        - monitoring
         - monitoring-prod
-        - gatekeeper-system
-        - falco
+        - monitoring
         - falco-prod
+        - falco
       changed_when: false
       failed_when: false
 
-    - name: "PROD: Uninstall platform Helm releases"
-      when: multi_cluster | bool
+    - name: "PROD: Uninstall namespace-scoped Helm releases"
       ansible.builtin.command:
         cmd: "helm --kube-context {{ prod_context }} uninstall {{ item.name }} -n {{ item.ns }} --wait"
       loop:
-        - { name: "traefik-prod", ns: "traefik" }
         - { name: "observability-prod", ns: "monitoring" }
         - { name: "observability-prod", ns: "monitoring-prod" }
-        - { name: "gatekeeper-core-prod", ns: "gatekeeper-system" }
         - { name: "falco-prod", ns: "falco" }
         - { name: "falco-prod", ns: "falco-prod" }
       loop_control:
@@ -374,46 +365,70 @@
       changed_when: false
       failed_when: false
 
-    - name: "PROD: Delete platform namespaces"
-      when: multi_cluster | bool
+    - name: "PROD: Uninstall cluster-scoped Helm releases"
+      when: multi_cluster | bool  # Singletons
+      ansible.builtin.command:
+        cmd: "helm --kube-context {{ prod_context }} uninstall {{ item.name }} -n {{ item.ns }} --wait"
+      loop:
+        - { name: "traefik-prod", ns: "traefik" }
+        - { name: "gatekeeper-core-prod", ns: "gatekeeper-system" }
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Delete namespace-scoped namespaces"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
+      loop:
+        - falco-prod
+        - monitoring-prod
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Delete cluster-scoped namespaces"
+      when: multi_cluster | bool  # Singletons: already deleted in Model A stage cleanup
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
       loop:
         - argocd
         - falco
-        - falco-prod
         - gatekeeper-system
         - monitoring
-        - monitoring-prod
         - traefik
-      changed_when: "'deleted' in result.stdout"
+      changed_when: false
       failed_when: false
-      register: result
 
     - name: "PROD: Wait for namespaces to terminate"
-      when: multi_cluster | bool
       ansible.builtin.pause:
         seconds: 15
 
     - name: "PROD: Check for stuck namespaces"
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} get namespace {{ item }} -o jsonpath='{.status.phase}'"
+      loop:
+        - falco-prod
+        - monitoring-prod
+      register: ns_status_prod
+      changed_when: false
+      failed_when: false
+
+    - name: "PROD: Check for stuck cluster-scoped namespaces"
       when: multi_cluster | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} get namespace {{ item }} -o jsonpath='{.status.phase}'"
       loop:
         - argocd
         - falco
-        - falco-prod
         - gatekeeper-system
         - monitoring
-        - monitoring-prod
         - traefik
-      register: ns_status_prod
+      register: ns_status_prod_cluster
       changed_when: false
       failed_when: false
 
-    - name: "PROD: Force-remove stuck namespaces (clear finalizers)"
+    - name: "PROD: Force-remove stuck namespaces"
       when:
-        - multi_cluster | bool
         - item.rc == 0
         - "'Terminating' in item.stdout"
       ansible.builtin.shell:
@@ -421,7 +436,7 @@
           kubectl --context {{ prod_context }} get namespace {{ item.item }} -o json
           | jq '.spec.finalizers = []'
           | kubectl --context {{ prod_context }} replace --raw "/api/v1/namespaces/{{ item.item }}/finalize" -f -
-      loop: "{{ ns_status_prod.results | default([]) }}"
+      loop: "{{ (ns_status_prod.results | default([])) + (ns_status_prod_cluster.results | default([])) }}"
       loop_control:
         label: "{{ item.item }}"
       changed_when: true

@@ -272,10 +272,10 @@
 
     # ===========================================================
     # PROD CLUSTER
+    # In Model A, prod_context == stage_context; checks target prod namespaces
     # ===========================================================
 
     - name: "PROD: Check cluster connectivity"
-      when: multi_cluster | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} cluster-info"
       register: prod_cluster_info
@@ -283,12 +283,12 @@
       failed_when: false
 
     - name: "PROD: Cluster connectivity"
-      when: multi_cluster | bool
+
       ansible.builtin.debug:
         msg: "{{ 'PASS' if prod_cluster_info.rc == 0 else 'FAIL - cannot reach cluster' }}"
 
     - name: "PROD: Check Argo CD applications"
-      when: multi_cluster | bool
+
       ansible.builtin.command:
         cmd: >-
           kubectl --context {{ prod_context }} -n argocd get applications
@@ -298,7 +298,7 @@
       failed_when: false
 
     - name: "PROD: Argo CD Applications"
-      when: multi_cluster | bool
+
       ansible.builtin.debug:
         msg: |
           {% for line in prod_argocd_apps.stdout_lines %}
@@ -307,7 +307,7 @@
           {% endfor %}
 
     - name: "PROD: Check Traefik"
-      when: multi_cluster | bool and traefik_enabled | default(false) | bool
+      when: traefik_enabled | default(false) | bool
       block:
         - name: "PROD: Check Traefik pods"
           ansible.builtin.command:
@@ -339,7 +339,7 @@
                 LoadBalancer IP: {{ prod_traefik_ip.stdout | default('NONE') }}
 
     - name: "PROD: Check Falco pods"
-      when: multi_cluster | bool
+
       ansible.builtin.command:
         cmd: >-
           kubectl --context {{ prod_context }} get pods -A
@@ -350,7 +350,7 @@
       failed_when: false
 
     - name: "PROD: Falco"
-      when: multi_cluster | bool
+
       ansible.builtin.debug:
         msg: |
           {% if prod_falco_pods.stdout_lines | length == 0 %}
@@ -363,7 +363,7 @@
           {% endif %}
 
     - name: "PROD: Check Gatekeeper pods"
-      when: multi_cluster | bool
+
       ansible.builtin.command:
         cmd: >-
           kubectl --context {{ prod_context }} -n gatekeeper-system
@@ -373,7 +373,7 @@
       failed_when: false
 
     - name: "PROD: Gatekeeper"
-      when: multi_cluster | bool
+
       ansible.builtin.debug:
         msg: |
           {% if prod_gatekeeper_pods.stdout_lines | length == 0 %}
@@ -386,7 +386,7 @@
           {% endif %}
 
     - name: "PROD: Ingress endpoints"
-      when: multi_cluster | bool and ingress_enabled | default(false) | bool
+      when: ingress_enabled | default(false) | bool
       block:
         - name: "PROD: Check Argo CD URL"
           ansible.builtin.uri:

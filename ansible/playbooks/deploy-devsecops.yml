@@ -64,7 +64,7 @@
       changed_when: false
 
     - name: Remove dangling Gatekeeper webhooks (prod)
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Cluster-scoped: only on separate prod cluster
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
@@ -90,7 +90,7 @@
       changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
 
     - name: Install Gatekeeper (prod)
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Cluster-scoped singleton: skip in Model A
       ansible.builtin.command:
         cmd: >-
           helm upgrade --install gatekeeper-core-prod gatekeeper/gatekeeper
@@ -113,7 +113,7 @@
       changed_when: false
 
     - name: Wait for Gatekeeper controller (prod)
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Cluster-scoped singleton
       ansible.builtin.command:
         cmd: >-
           kubectl --context {{ prod_context }} -n gatekeeper-system
@@ -133,7 +133,7 @@
       changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
     - name: Apply ConstraintTemplates (prod)
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Cluster-scoped: same templates already applied in Model A
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f {{ platform_dir }}/gatekeeper/templates/"
       register: result
@@ -164,7 +164,7 @@
       until: result.rc == 0
 
     - name: Apply Constraints (prod)
-      when: multi_cluster | bool
+      when: multi_cluster | bool  # Same-named resources: prod would overwrite stage in Model A
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f {{ platform_dir }}/gatekeeper/constraints/prod/"
       register: result
@@ -207,7 +207,7 @@
       changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
 
     - name: Install Falco (prod)
-      when: multi_cluster | bool
+      # Namespace-scoped: runs in both Model A (falco-prod ns) and Model B (falco ns on prod cluster)
       ansible.builtin.command:
         cmd: >-
           helm upgrade --install falco-prod falcosecurity/falco
@@ -228,7 +228,6 @@
       failed_when: false
 
     - name: Apply Falco additional manifests (prod)
-      when: multi_cluster | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} -n {{ falco_prod_namespace }} apply -k {{ platform_dir }}/falco/rules/"
       register: result

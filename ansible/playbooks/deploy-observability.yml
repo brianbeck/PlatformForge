@@ -106,8 +106,9 @@
 
     # --- Prod ---
 
+    # --- Prod (runs in both Model A and B; uses prod_context which equals stage_context in Model A) ---
+
     - name: Clean up orphaned webhooks (prod)
-      when: multi_cluster | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
@@ -118,13 +119,11 @@
       changed_when: false
 
     - name: Clean up orphaned jobs (prod)
-      when: multi_cluster | bool
       ansible.builtin.shell:
         cmd: "kubectl --context {{ prod_context }} delete jobs --all -n {{ monitoring_prod_namespace }} --grace-period=0 --force 2>/dev/null; true"
       changed_when: false
 
     - name: Clean up orphaned Helm secrets (prod)
-      when: multi_cluster | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete secrets -n {{ monitoring_prod_namespace }}
@@ -133,7 +132,6 @@
       changed_when: false
 
     - name: Install Observability Stack (prod)
-      when: multi_cluster | bool
       ansible.builtin.shell:
         cmd: >-
           helm upgrade --install observability-prod prometheus-community/kube-prometheus-stack
@@ -184,7 +182,7 @@
       changed_when: true
 
     - name: Apply Grafana IngressRoute (prod)
-      when: multi_cluster | bool and ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
+      when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../roles/argocd_bootstrap/templates/ingressroutes/grafana.yml.j2"
         dest: "/tmp/grafana-ir-prod.yml"
@@ -195,13 +193,13 @@
         env_suffix: "prod"
 
     - name: Apply prod Grafana IngressRoute
-      when: multi_cluster | bool and ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
+      when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f /tmp/grafana-ir-prod.yml"
       changed_when: true
 
     - name: Apply Prometheus IngressRoute (prod)
-      when: multi_cluster | bool and ingress_enabled | default(false) | bool and prometheus_hostname_prod | default('') | length > 0
+      when: ingress_enabled | default(false) | bool and prometheus_hostname_prod | default('') | length > 0
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../roles/argocd_bootstrap/templates/ingressroutes/prometheus.yml.j2"
         dest: "/tmp/prometheus-ir-prod.yml"
@@ -212,7 +210,7 @@
         env_suffix: "prod"
 
     - name: Apply prod Prometheus IngressRoute
-      when: multi_cluster | bool and ingress_enabled | default(false) | bool and prometheus_hostname_prod | default('') | length > 0
+      when: ingress_enabled | default(false) | bool and prometheus_hostname_prod | default('') | length > 0
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f /tmp/prometheus-ir-prod.yml"
       changed_when: true
