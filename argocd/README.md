@@ -59,6 +59,31 @@ Argo CD sync-waves control ordering:
 - Wave 2: Gatekeeper templates
 - Wave 3: Gatekeeper constraints
 
+## Accessing Argo CD
+
+Get the admin password:
+```bash
+# Stage
+kubectl --context <stage-context> -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d && echo
+
+# Prod
+kubectl --context <prod-context> -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+Default username: `admin`
+
+If Traefik ingress is configured, access via:
+- **Stage:** `https://argocd-stage.<your-domain>`
+- **Prod:** `https://argocd-prod.<your-domain>`
+
+Otherwise, port-forward:
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:80
+# Open http://localhost:8080
+```
+
 ## After deployment
 
 Once services are installed by Ansible and Applications are registered, Argo CD monitors for drift:
