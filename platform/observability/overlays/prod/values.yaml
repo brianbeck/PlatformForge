@@ -67,6 +67,8 @@ grafana:
       cpu: 500m
       memory: 512Mi
 
+  # Persistence disabled -- local-path StorageClass is ReadWriteOnce
+  # which doesn't support rolling updates. Enable when using a
+  # distributed storage class (Longhorn, Rook/Ceph).
   persistence:
-    enabled: true
-    size: 10Gi
+    enabled: false
