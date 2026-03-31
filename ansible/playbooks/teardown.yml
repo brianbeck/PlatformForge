@@ -362,7 +362,6 @@
         - { name: "observability-prod", ns: "monitoring-prod" }
         - { name: "falco-prod", ns: "falco" }
         - { name: "falco-prod", ns: "falco-prod" }
-        - { name: "trivy-operator-prod", ns: "trivy-system" }
       loop_control:
         label: "{{ item.name }}"
       changed_when: false
@@ -375,6 +374,7 @@
       loop:
         - { name: "traefik-prod", ns: "traefik" }
         - { name: "gatekeeper-core-prod", ns: "gatekeeper-system" }
+        - { name: "trivy-operator-prod", ns: "trivy-system" }
       loop_control:
         label: "{{ item.name }}"
       changed_when: false
@@ -399,6 +399,7 @@
         - gatekeeper-system
         - monitoring
         - traefik
+        - trivy-system
       changed_when: false
       failed_when: false
 

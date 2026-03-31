@@ -191,14 +191,17 @@
         - platform-stage.yml
         - platform-prod.yml
 
-    - name: Build application list
+    - name: Build application lists
       ansible.builtin.set_fact:
-        app_list:
+        # Namespace-scoped: always deployed for both stage and prod
+        app_list_namespaced:
           - falco.yml
+          - observability.yml
+        # Cluster-scoped singletons: prod only in Model B
+        app_list_singletons:
           - gatekeeper-core.yml
           - gatekeeper-templates.yml
           - gatekeeper-constraints.yml
-          - observability.yml
           - trivy-operator.yml
         app_list_traefik: "{{ ['traefik.yml'] if traefik_enabled | default(false) | bool else [] }}"
 
@@ -207,14 +210,22 @@
         src: "{{ playbook_dir }}/../roles/argocd_bootstrap/templates/apps/stage/{{ item }}.j2"
         dest: "{{ playbook_dir }}/../../argocd/apps/stage/{{ item }}"
         mode: "0644"
-      loop: "{{ app_list + app_list_traefik }}"
+      loop: "{{ app_list_namespaced + app_list_singletons + app_list_traefik }}"
 
-    - name: Template prod Applications
+    - name: Template prod Applications (namespace-scoped)
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../roles/argocd_bootstrap/templates/apps/prod/{{ item }}.j2"
         dest: "{{ playbook_dir }}/../../argocd/apps/prod/{{ item }}"
         mode: "0644"
-      loop: "{{ app_list + app_list_traefik }}"
+      loop: "{{ app_list_namespaced }}"
+
+    - name: Template prod Applications (cluster-scoped singletons)
+      when: multi_cluster | bool
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/argocd_bootstrap/templates/apps/prod/{{ item }}.j2"
+        dest: "{{ playbook_dir }}/../../argocd/apps/prod/{{ item }}"
+        mode: "0644"
+      loop: "{{ app_list_singletons + app_list_traefik }}"
 
     - name: Apply stage AppProject
       ansible.builtin.command:
