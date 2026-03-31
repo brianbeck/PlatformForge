@@ -222,6 +222,7 @@
       changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
     - name: Apply prod AppProject
+      when: multi_cluster | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/projects/platform-prod.yml"
       register: result
@@ -234,6 +235,7 @@
       changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
     - name: Apply prod Applications
+      when: multi_cluster | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/apps/prod/"
       register: result
@@ -267,7 +269,9 @@
           {% if argocd_hostname_stage | default('') | length > 0 %}
           URLs:
             Stage: https://{{ argocd_hostname_stage }}
+          {% if multi_cluster | bool %}
             Prod:  https://{{ argocd_hostname_prod }}
+          {% endif %}
           {% endif %}
 
           Next steps:
