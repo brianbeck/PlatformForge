@@ -1,0 +1,54 @@
+# Trivy Operator base Helm values
+# Continuously scans running workloads for vulnerabilities and
+# reports results as Kubernetes CRDs (VulnerabilityReport).
+
+# Scan configuration
+trivy:
+  # Severity levels to include in reports
+  severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+
+  # Scan timeout
+  timeout: 5m0s
+
+  # Use Trivy's built-in vulnerability database (downloaded automatically)
+  # For air-gapped environments, configure a mirror
+  ignoreUnfixed: false
+
+# Operator configuration
+operator:
+  # Scan all namespaces except system ones
+  scanJobsConcurrentLimit: 3
+
+  # Rescan interval: how often to re-scan running workloads
+  # New CVEs are published daily; 24h catches them within a day
+  vulnerabilityScannerScanInterval: 24h
+
+  # Scan on new workload creation
+  vulnerabilityScannerEnabled: true
+
+  # Scan ConfigAudit (checks for misconfigurations)
+  configAuditScannerEnabled: true
+
+  # Scan RBAC
+  rbacAssessmentScannerEnabled: true
+
+  # Scan secrets for exposure
+  exposedSecretScannerEnabled: true
+
+# ServiceMonitor for Prometheus scraping
+serviceMonitor:
+  enabled: true
+  labels:
+    app.kubernetes.io/part-of: platformforge
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Exclude platform namespaces from scanning (they're managed by PlatformForge)
+excludeNamespaces: "kube-system,kube-node-lease,kube-public,argocd,gatekeeper-system,trivy-system"

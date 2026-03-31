@@ -189,6 +189,7 @@
         - { name: "gatekeeper-core-stage", ns: "gatekeeper-system" }
         - { name: "falco-stage", ns: "falco" }
         - { name: "falco-stage", ns: "falco-stage" }
+        - { name: "trivy-operator-stage", ns: "trivy-system" }
       loop_control:
         label: "{{ item.name }}"
       changed_when: false
@@ -200,6 +201,7 @@
         cmd: "kubectl --context {{ stage_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
       loop:
         - argocd
+        - trivy-system
         - falco
         - falco-stage
         - gatekeeper-system
@@ -360,6 +362,7 @@
         - { name: "observability-prod", ns: "monitoring-prod" }
         - { name: "falco-prod", ns: "falco" }
         - { name: "falco-prod", ns: "falco-prod" }
+        - { name: "trivy-operator-prod", ns: "trivy-system" }
       loop_control:
         label: "{{ item.name }}"
       changed_when: false

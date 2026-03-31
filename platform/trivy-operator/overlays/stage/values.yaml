@@ -1,0 +1,14 @@
+# Trivy Operator stage overlay
+
+# Scan more frequently in stage for faster feedback
+operator:
+  vulnerabilityScannerScanInterval: 12h
+
+# Smaller resources for stage
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi

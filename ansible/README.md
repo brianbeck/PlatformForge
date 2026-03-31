@@ -11,6 +11,7 @@ Ansible playbooks and roles for deploying and managing PlatformForge platform se
 | `deploy-ingress.yml` | Deploy Traefik ingress controller | No |
 | `deploy-observability.yml` | Deploy Prometheus, Grafana, Alertmanager | No |
 | `deploy-devsecops.yml` | Deploy OPA Gatekeeper + Falco | No |
+| `deploy-vulnerability-scanning.yml` | Deploy Trivy Operator | No |
 | `deploy-continuousdeployment.yml` | Deploy Argo CD, register all Applications | No |
 | `deploy-dns.yml` | Register hostnames with Pi-hole DNS | No |
 | `healthcheck.yml` | Verify all services across all clusters | No |

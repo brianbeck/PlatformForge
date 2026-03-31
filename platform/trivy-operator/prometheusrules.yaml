@@ -1,0 +1,74 @@
+# PrometheusRules for Trivy Operator vulnerability alerting
+# Requires Prometheus Operator (deployed by observability stack)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: trivy-vulnerability-alerts
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  groups:
+    - name: trivy.vulnerabilities
+      rules:
+        # Alert when any running workload has CRITICAL vulnerabilities
+        - alert: CriticalVulnerabilityDetected
+          expr: |
+            sum by (namespace, image_repository, image_tag) (
+              trivy_image_vulnerabilities{severity="Critical"}
+            ) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Critical CVE found in running image"
+            description: "Image {{ $labels.image_repository }}:{{ $labels.image_tag }} in namespace {{ $labels.namespace }} has {{ $value }} critical vulnerabilities."
+
+        # Alert when workloads have HIGH vulnerabilities above threshold
+        - alert: HighVulnerabilityThresholdExceeded
+          expr: |
+            sum by (namespace, image_repository, image_tag) (
+              trivy_image_vulnerabilities{severity="High"}
+            ) > 10
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CVE count in running image"
+            description: "Image {{ $labels.image_repository }}:{{ $labels.image_tag }} in namespace {{ $labels.namespace }} has {{ $value }} high-severity vulnerabilities."
+
+        # Alert when total vulnerabilities across all images is high
+        - alert: ClusterVulnerabilityCountHigh
+          expr: |
+            sum(trivy_image_vulnerabilities{severity=~"Critical|High"}) > 50
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "High total CVE count across cluster"
+            description: "{{ $value }} critical+high vulnerabilities detected across all running images."
+
+        # Alert when Trivy Operator itself is not scanning
+        - alert: TrivyOperatorNotScanning
+          expr: |
+            absent(trivy_image_vulnerabilities) == 1
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Trivy Operator has no vulnerability data"
+            description: "No vulnerability reports found. Trivy Operator may not be running or scanning."
+
+    - name: trivy.configaudit
+      rules:
+        # Alert on critical misconfigurations
+        - alert: CriticalMisconfigurationDetected
+          expr: |
+            sum by (namespace, name) (
+              trivy_resource_configaudits{severity="Critical"}
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Critical misconfiguration in {{ $labels.namespace }}/{{ $labels.name }}"
+            description: "Trivy detected {{ $value }} critical misconfigurations."

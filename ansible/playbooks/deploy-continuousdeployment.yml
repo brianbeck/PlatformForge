@@ -199,6 +199,7 @@
           - gatekeeper-templates.yml
           - gatekeeper-constraints.yml
           - observability.yml
+          - trivy-operator.yml
         app_list_traefik: "{{ ['traefik.yml'] if traefik_enabled | default(false) | bool else [] }}"
 
     - name: Template stage Applications

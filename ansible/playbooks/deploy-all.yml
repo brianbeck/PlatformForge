@@ -16,8 +16,11 @@
 - name: "Step 3: Deploy DevSecOps Stack"
   ansible.builtin.import_playbook: deploy-devsecops.yml
 
-- name: "Step 4: Deploy Argo CD and register Applications"
+- name: "Step 4: Deploy Vulnerability Scanning"
+  ansible.builtin.import_playbook: deploy-vulnerability-scanning.yml
+
+- name: "Step 5: Deploy Argo CD and register Applications"
   ansible.builtin.import_playbook: deploy-continuousdeployment.yml
 
-- name: "Step 5: Register DNS with Pi-hole"
+- name: "Step 6: Register DNS with Pi-hole"
   ansible.builtin.import_playbook: deploy-dns.yml

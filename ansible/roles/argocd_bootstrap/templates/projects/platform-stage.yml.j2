@@ -12,10 +12,13 @@ spec:
     - "https://open-policy-agent.github.io/gatekeeper/charts"
     - "https://prometheus-community.github.io/helm-charts"
     - "https://traefik.github.io/charts"
+    - "https://aquasecurity.github.io/helm-charts/"
 
   destinations:
     - server: "https://kubernetes.default.svc"
       namespace: "{{ falco_stage_namespace }}"
+    - server: "https://kubernetes.default.svc"
+      namespace: "trivy-system"
     - server: "https://kubernetes.default.svc"
       namespace: "{{ gatekeeper_stage_namespace }}"
     - server: "https://kubernetes.default.svc"

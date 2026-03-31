@@ -23,6 +23,7 @@ Each service follows the same pattern:
 | `observability/` | kube-prometheus-stack | Prometheus, Grafana, Alertmanager, node-exporter |
 | `gatekeeper/` | OPA Gatekeeper | Kubernetes admission policy enforcement |
 | `falco/` | Falco | Runtime security monitoring via eBPF |
+| `trivy-operator/` | Trivy Operator | Continuous vulnerability scanning of running workloads |
 
 ## How values are applied
 

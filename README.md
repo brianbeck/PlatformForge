@@ -100,10 +100,14 @@ PlatformForge/
     │   ├── templates/            # ConstraintTemplates (shared)
     │   ├── constraints/{stage,prod}/  # Constraints (dryrun/deny)
     │   └── overlays/{stage,prod}/values.yaml
-    └── falco/
-        ├── base-values.yaml      # Helm values + custom rules
-        ├── rules/                # PrometheusRules, NetworkPolicies
-        ├── argo-events/          # Falco -> Argo Workflows integration
+    ├── falco/
+    │   ├── base-values.yaml      # Helm values + custom rules
+    │   ├── rules/                # PrometheusRules, NetworkPolicies
+    │   ├── argo-events/          # Falco -> Argo Workflows integration
+    │   └── overlays/{stage,prod}/values.yaml
+    └── trivy-operator/
+        ├── base-values.yaml      # Vulnerability scanning config
+        ├── prometheusrules.yaml  # CVE alerting rules
         └── overlays/{stage,prod}/values.yaml
 ```
 
@@ -209,6 +213,7 @@ git push
 | `deploy-ingress.yml` | Install Traefik ingress controller | `bootstrap.yml` |
 | `deploy-observability.yml` | Install Prometheus, Grafana, Alertmanager | `bootstrap.yml` |
 | `deploy-devsecops.yml` | Install OPA Gatekeeper + Falco | `bootstrap.yml` |
+| `deploy-vulnerability-scanning.yml` | Install Trivy Operator | `bootstrap.yml` |
 | `deploy-continuousdeployment.yml` | Install Argo CD, register all apps | `bootstrap.yml`, other deploys |
 | `deploy-dns.yml` | Register hostnames with Pi-hole | `bootstrap.yml`, `deploy-ingress.yml` |
 | `healthcheck.yml` | Verify all services across both clusters | Any services deployed |
@@ -219,11 +224,12 @@ git push
 `deploy-all.yml` runs the playbooks in this order:
 
 ```
-1. deploy-ingress.yml        (Traefik -- needed for external access)
-2. deploy-observability.yml  (Prometheus CRDs needed by Falco ServiceMonitors)
-3. deploy-devsecops.yml      (Gatekeeper + Falco)
-4. deploy-continuousdeployment.yml  (Argo CD -- registered last so all apps show Synced)
-5. deploy-dns.yml            (Pi-hole -- needs Traefik LB IPs)
+1. deploy-ingress.yml              (Traefik -- needed for external access)
+2. deploy-observability.yml        (Prometheus CRDs needed by ServiceMonitors)
+3. deploy-devsecops.yml            (Gatekeeper + Falco)
+4. deploy-vulnerability-scanning.yml  (Trivy Operator -- scans running workloads)
+5. deploy-continuousdeployment.yml (Argo CD -- registered last so all apps show Synced)
+6. deploy-dns.yml                  (Pi-hole -- needs Traefik LB IPs)
 ```
 
 Each step installs via Helm with `--wait`, ensuring services are healthy before proceeding. This eliminates the race conditions that occur when Argo CD deploys everything asynchronously.
@@ -298,6 +304,33 @@ Full monitoring: Prometheus, Alertmanager, Grafana, node-exporter, kube-state-me
 - Grafana with dashboard auto-loading
 - Stage: 7-day retention, ephemeral storage
 - Prod: 30-day retention, 2 Prometheus replicas, 2 Alertmanager replicas
+
+### Trivy Operator (Vulnerability Scanning)
+
+Continuously scans running workloads for CVEs, misconfigurations, exposed secrets, and RBAC issues.
+
+**What's included:**
+- Scans all running container images against CVE databases
+- Reports results as Kubernetes CRDs (`VulnerabilityReport`)
+- Prometheus metrics and alerting rules for critical CVEs
+- Config audit and RBAC assessment
+- Stage: 12h rescan interval
+- Prod: 24h rescan interval
+
+**Security Layer Model:**
+
+| Layer | Tool | When | Status |
+|---|---|---|---|
+| 1 | Trivy CLI in CI | Build time (fail build on critical CVEs) | User implements in CI pipeline |
+| 2 | Trivy Operator + Prometheus | Runtime (alert on CVEs in running images) | **Implemented** |
+| 3 | Trivy Operator + Prometheus | Continuous (alert on new CVEs post-deploy) | **Implemented** |
+| 4 | Gatekeeper + External Data | Deploy time (block images at admission) | **Planned -- not yet implemented** |
+
+**Viewing vulnerability reports:**
+```bash
+kubectl get vulnerabilityreports -A
+kubectl get vulnerabilityreports -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.report.artifact.repository}:{.report.artifact.tag}{"\t"}Critical:{.report.summary.criticalCount}{"\n"}{end}'
+```
 
 ### Argo CD (Continuous Deployment)
 
@@ -386,4 +419,5 @@ Ensure the Falco NetworkPolicy allows HTTPS egress (port 443).
 | kube-prometheus-stack | 82.15.1 | v0.89.0 |
 | OPA Gatekeeper | 3.22.0 | v3.22.0 |
 | Falco | 8.0.1 | 0.43.0 |
+| Trivy Operator | 0.32.1 | 0.30.1 |
 | Argo CD | 9.4.17 | v3.3.6 |
