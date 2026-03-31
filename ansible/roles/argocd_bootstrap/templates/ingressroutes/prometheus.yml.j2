@@ -12,7 +12,7 @@ spec:
     - match: Host(`{{ prometheus_hostname }}`)
       kind: Rule
       services:
-        - name: observability-{{ env_suffix }}-kube-prome-prometheus
+        - name: prometheus-operated
           port: 9090
           scheme: http
   tls: {}
