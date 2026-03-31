@@ -10,7 +10,7 @@ PlatformForge is designed to work alongside [ClusterForge](https://github.com/br
 ┌────────────────────────────────────────────────────────────────────┐
 │                        PlatformForge Repo                          │
 │                                                                    │
-│  ┌──────────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
+│  ┌───────────────────┐  ┌──────────────┐  ┌──────────────────────┐ │
 │  │ Ansible Playbooks │  │  Argo CD     │  │  Platform Services   │ │
 │  │                   │  │  Manifests   │  │                      │ │
 │  │  bootstrap        │  │  (Projects,  │  │  Traefik (ingress)   │ │
@@ -21,7 +21,7 @@ PlatformForge is designed to work alongside [ClusterForge](https://github.com/br
 │  │  deploy-dns       │  │              │  │  Helm values/overlays│ │
 │  │  healthcheck      │  │              │  │  Rules/constraints   │ │
 │  │  teardown         │  │              │  │  IngressRoutes       │ │
-│  └──────────────────┘  └──────────────┘  └──────────────────────┘ │
+│  └───────────────────┘  └──────────────┘  └──────────────────────┘ │
 │                                                                    │
 │    Ansible installs           Argo CD manages ongoing              │
 │    services in order          GitOps reconciliation                │
