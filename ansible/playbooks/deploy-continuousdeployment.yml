@@ -254,6 +254,38 @@
       changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
     # ============================================================
+    # RECONCILE: Let Argo CD sync all apps to eliminate drift
+    # between Ansible's Helm install and Argo CD's rendering
+    # ============================================================
+
+    - name: Wait for Argo CD to detect applications
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Force refresh all stage applications
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} -n argocd get applications -o name |
+          xargs -I{} kubectl --context {{ stage_context }} -n argocd patch {} --type merge
+          -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for stage auto-sync to reconcile
+      ansible.builtin.pause:
+        seconds: 30
+
+    - name: Force refresh all prod applications
+      when: multi_cluster | bool
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} -n argocd get applications -o name |
+          xargs -I{} kubectl --context {{ prod_context }} -n argocd patch {} --type merge
+          -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+      changed_when: false
+      failed_when: false
+
+    # ============================================================
     # CLEANUP
     # ============================================================
 
