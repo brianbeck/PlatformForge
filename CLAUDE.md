@@ -2,31 +2,33 @@
 
 ## Project Overview
 
-PlatformForge is a GitOps-oriented platform services management system for Kubernetes. It uses Ansible for initial deployment and Argo CD for ongoing declarative management. Designed to work alongside ClusterForge (which provisions Kubernetes clusters on Proxmox).
+PlatformForge is a GitOps platform services management system for Kubernetes. Ansible bootstraps Argo CD; Argo CD owns and deploys all platform services via ApplicationSets. Designed to work alongside ClusterForge (cluster provisioning) and DevExForge (developer experience).
 
 ## Architecture
 
-- **Ansible** installs all services via Helm in dependency order
-- **Argo CD** takes over for GitOps management after initial install
-- **Two environment models:** Model A (single cluster, namespace separation) and Model B (separate clusters)
+**Single-owner model:** Ansible installs Argo CD. Argo CD installs everything else.
 
-## Deployment Order
+**No dual control:** Ansible never runs `helm install` for platform services. This eliminates drift between Ansible's Helm rendering and Argo CD's Helm rendering.
+
+## Deployment Order (Sync Waves)
 
 ```
-1. Traefik (ingress)
-2. Observability (Prometheus, Grafana, Alertmanager)
-3. DevSecOps (Gatekeeper + Falco)
-4. Vulnerability Scanning (Trivy Operator)
-5. Argo CD (registers all apps)
-6. DNS (Pi-hole registration)
+Wave 10   Traefik (ingress controller)
+Wave 20   kube-prometheus-stack (monitoring CRDs + stack)
+Wave 30   Gatekeeper controller
+Wave 40   Gatekeeper ConstraintTemplates (creates CRDs)
+Wave 50   Gatekeeper Constraints (uses CRDs from wave 40)
+Wave 60   Falco (runtime security)
+Wave 70   Trivy Operator (vulnerability scanning)
 ```
 
 ## Key Directories
 
-- `ansible/playbooks/` - All deployment, teardown, and health check playbooks
-- `ansible/roles/` - Discovery roles and Argo CD templates
+- `ansible/playbooks/` - bootstrap, install-argocd, healthcheck, teardown
+- `ansible/roles/argocd_install/` - Argo CD Helm install + ApplicationSet templates
+- `argocd/root/` - AppProjects (generated)
+- `argocd/waves/` - ApplicationSets grouped by sync wave (generated)
 - `platform/` - Helm values and overlays for each service
-- `argocd/` - Generated Argo CD manifests (committed after bootstrap)
 
 ## Services and Versions
 
@@ -39,57 +41,60 @@ PlatformForge is a GitOps-oriented platform services management system for Kuber
 | Trivy Operator | aquasecurity/trivy-operator | 0.32.1 | trivy-system |
 | Argo CD | argo/argo-cd | 9.4.17 | argocd |
 
+## Environment Models
+
+**Model A (single cluster):**
+- `single_cluster = true`, `stage_context == prod_context`
+- Singletons (Traefik, Gatekeeper, Trivy): one instance
+- Namespace-scoped (Falco, Observability): two instances in different namespaces
+- One Argo CD with ApplicationSets generating both stage and prod apps
+
+**Model B (two clusters):**
+- `multi_cluster = true`, `stage_context != prod_context`
+- Each cluster has its own Argo CD
+- Same ApplicationSets applied to each Argo CD
+- Each Argo CD manages only its own cluster
+
+## ApplicationSet Categories
+
+- **Singleton services:** Generator has one entry per Argo CD instance (Traefik, Gatekeeper, Trivy)
+- **Namespace-scoped services:** Generator has entries for each environment (Falco, Observability)
+- **Constraint services:** Generator has one entry in Model A (stage/dryrun only), one per cluster in Model B
+
 ## Security Layer Model
 
-| Layer | Tool | When | Action | Status |
-|---|---|---|---|---|
-| 1 | Trivy CLI (in CI/CD pipeline) | Build time | Fail build on critical CVEs | User implements in CI |
-| 2 | Trivy Operator + Prometheus | Runtime | Alert on CVEs in running images | Implemented |
-| 3 | Trivy Operator + Prometheus | Continuous | Alert when new CVEs affect deployed images | Implemented |
-| 4 | Gatekeeper + External Data Provider | Deploy time | Block images with CVEs at admission | **NOT YET IMPLEMENTED** |
+| Layer | Tool | When | Status |
+|---|---|---|---|
+| 1 | Trivy CLI (in CI/CD) | Build time | User implements in CI |
+| 2 | Trivy Operator + Prometheus | Runtime | **Implemented** |
+| 3 | Trivy Operator + Prometheus | Continuous | **Implemented** |
+| 4 | Gatekeeper + External Data Provider | Deploy time | **NOT YET IMPLEMENTED** |
 
 ### Layer 4 Implementation Notes (Future)
 
-Layer 4 would use Gatekeeper's External Data Provider to query Trivy Operator's vulnerability data at admission time. When a pod is created, Gatekeeper would check if the image has too many CVEs and reject it.
+Gatekeeper External Data Provider querying Trivy Operator vulnerability data at admission time.
 
 Required components:
 - Gatekeeper External Data Provider CRD pointing to Trivy Operator
-- A ConstraintTemplate that queries vulnerability data via the provider
-- Constraints with configurable CVE thresholds (e.g., deny if CRITICAL > 0)
+- ConstraintTemplate querying vulnerability data via the provider
+- Constraints with configurable CVE thresholds
 
 Reference: https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata
 
-## Important Patterns
-
-### Model A vs Model B
-
-- **Cluster-scoped singletons** (Traefik, Argo CD, Gatekeeper core): install once, guarded by `when: multi_cluster | bool`
-- **Namespace-scoped services** (Falco, Observability, Trivy Operator): always install for both stage and prod
-
-### Traefik IngressRoutes
-
-Use Traefik IngressRoute CRDs instead of standard Kubernetes Ingress. Traefik v3 forces HTTPS backend connections on the `websecure` entrypoint with standard Ingress. IngressRoutes allow `scheme: http` on backends.
-
-### Gatekeeper Constraints
-
-- Platform namespaces are excluded from all constraints
-- Stage uses `dryrun` enforcement; prod uses `deny`
-- Constraints are cluster-scoped with the same names in stage/prod, so in Model A only stage constraints are applied
-
-### Helm Values Layering
-
-Every service: `base-values.yaml` + `overlays/{env}/values.yaml`
-Argo CD Applications use multi-source to reference these from Git.
-
 ## Common Issues
 
-- **Gatekeeper webhook blocks namespace creation:** Clean up with `kubectl delete validatingwebhookconfiguration -l gatekeeper.sh/system=yes`
-- **kube-prometheus-stack stuck on install:** Delete orphaned jobs and Helm secrets in the monitoring namespace
+- **Gatekeeper webhook blocks namespace creation:** Keep `validatingWebhookCheckIgnoreFailurePolicy: Ignore` in values
 - **Falco can't download artifacts:** Ensure NetworkPolicy allows HTTPS egress (port 443)
-- **Argo CD shows Unknown sync:** Push generated manifests to Git
+- **Argo CD shows Unknown sync:** Push generated ApplicationSets to Git
+- **kube-prometheus-stack webhook caBundle drift:** Handled by `ignoreDifferences` in ApplicationSet
 
-## Configuration
+## Playbook Reference
 
-- `environments.yml` - All bootstrap configuration (gitignored)
-- `ansible/vault/secrets.yml` - Pi-hole credentials (Ansible Vault encrypted)
-- `ansible/group_vars/all.yml` - Default variables
+```bash
+cd ansible
+ansible-playbook playbooks/bootstrap.yml        # Configure (interactive)
+ansible-playbook playbooks/install-argocd.yml    # Install Argo CD + deploy platform
+ansible-playbook playbooks/healthcheck.yml       # Verify all services
+ansible-playbook playbooks/teardown.yml          # Clean removal
+ansible-playbook playbooks/deploy-dns.yml        # Re-register Pi-hole DNS
+```

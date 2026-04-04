@@ -1,0 +1,36 @@
+---
+# Install Argo CD and deploy all platform services via ApplicationSets.
+#
+# Prerequisites: bootstrap.yml has been run
+#
+# Argo CD is the sole owner of all platform services after this playbook.
+# Ansible only installs Argo CD itself; everything else is managed via GitOps.
+#
+# Usage:
+#   cd ansible
+#   ansible-playbook playbooks/install-argocd.yml
+
+- name: Install Argo CD and Deploy Platform
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../group_vars/all.yml
+
+  pre_tasks:
+    - name: Load environment configuration
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../environments.yml"
+
+    - name: Verify required tools
+      ansible.builtin.command:
+        cmd: "{{ item }} version"
+      loop:
+        - kubectl
+        - helm
+      changed_when: false
+      failed_when: result.rc != 0
+      register: result
+
+  roles:
+    - argocd_install
+    - pihole_dns

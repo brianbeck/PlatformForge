@@ -1,6 +1,0 @@
----
-argocd_namespace: argocd
-argocd_chart_version: "9.4.17"
-argocd_helm_repo: https://argoproj.github.io/argo-helm
-argocd_server_insecure: true
-argocd_admin_password: ""

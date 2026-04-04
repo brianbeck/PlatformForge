@@ -1,0 +1,54 @@
+# Trivy Operator - Singleton (one per cluster)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: trivy-operator
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+{% for entry in singleton_envs %}
+          - env: "{{ entry.env }}"
+            project: "{{ entry.project }}"
+{% endfor %}
+  template:
+    metadata:
+      name: "trivy-operator-{{ '{{env}}' }}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: trivy-operator
+      annotations:
+        argocd.argoproj.io/sync-wave: "70"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{ '{{project}}' }}"
+      sources:
+        - repoURL: https://aquasecurity.github.io/helm-charts/
+          chart: trivy-operator
+          targetRevision: "0.32.1"
+          helm:
+            valueFiles:
+              - $values/platform/trivy-operator/base-values.yaml
+              - "$values/platform/trivy-operator/overlays/{{ '{{env}}' }}/values.yaml"
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: trivy-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

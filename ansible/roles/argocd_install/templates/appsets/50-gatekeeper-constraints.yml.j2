@@ -1,0 +1,48 @@
+# Gatekeeper Constraints - Singleton (cluster-scoped, env-specific enforcement)
+# Model A: only stage constraints applied (dryrun)
+# Model B: stage constraints on stage cluster, prod constraints on prod cluster
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: gatekeeper-constraints
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+{% for entry in constraint_envs %}
+          - env: "{{ entry.env }}"
+            project: "{{ entry.project }}"
+{% endfor %}
+  template:
+    metadata:
+      name: "gatekeeper-constraints-{{ '{{env}}' }}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: gatekeeper
+      annotations:
+        argocd.argoproj.io/sync-wave: "50"
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{ '{{project}}' }}"
+      sources:
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          path: "platform/gatekeeper/constraints/{{ '{{env}}' }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: gatekeeper-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
+          - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

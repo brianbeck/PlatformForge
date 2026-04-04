@@ -1,0 +1,330 @@
+---
+# Install Argo CD and apply ApplicationSets for all platform services.
+# Argo CD becomes the sole owner of platform service lifecycle.
+
+# ============================================================
+# COMPUTE ENVIRONMENT-SPECIFIC GENERATOR ENTRIES
+# ============================================================
+
+- name: Set namespace facts for Model A (single cluster)
+  when: single_cluster | bool
+  ansible.builtin.set_fact:
+    falco_stage_namespace: "falco-stage"
+    falco_prod_namespace: "falco-prod"
+    monitoring_stage_namespace: "monitoring-stage"
+    monitoring_prod_namespace: "monitoring-prod"
+
+- name: Set namespace facts for Model B (multi-cluster)
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    falco_stage_namespace: "falco"
+    falco_prod_namespace: "falco"
+    monitoring_stage_namespace: "monitoring"
+    monitoring_prod_namespace: "monitoring"
+
+# Singleton services: one per cluster
+# Model A: one entry (stage only)
+# Model B: one entry per Argo CD instance (each manages its own env)
+- name: Build singleton generator entries
+  ansible.builtin.set_fact:
+    singleton_envs:
+      - env: stage
+        project: platform-stage
+
+# Namespace-scoped services: per environment
+# Model A: two entries (both on same cluster, different namespaces)
+# Model B: one entry per Argo CD instance
+- name: Build namespaced generator entries (Model A)
+  when: single_cluster | bool
+  ansible.builtin.set_fact:
+    namespaced_envs:
+      - env: stage
+        project: platform-stage
+        falco_namespace: "{{ falco_stage_namespace }}"
+        monitoring_namespace: "{{ monitoring_stage_namespace }}"
+      - env: prod
+        project: platform-prod
+        falco_namespace: "{{ falco_prod_namespace }}"
+        monitoring_namespace: "{{ monitoring_prod_namespace }}"
+
+- name: Build namespaced generator entries (Model B)
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    namespaced_envs:
+      - env: stage
+        project: platform-stage
+        falco_namespace: "{{ falco_stage_namespace }}"
+        monitoring_namespace: "{{ monitoring_stage_namespace }}"
+
+# Constraint entries: cluster-scoped, env determines enforcement level
+# Model A: stage only (dryrun) -- prod would overwrite with same resource names
+# Model B: one entry per Argo CD instance
+- name: Build constraint generator entries
+  ansible.builtin.set_fact:
+    constraint_envs:
+      - env: stage
+        project: platform-stage
+
+# ============================================================
+# INSTALL ARGO CD
+# ============================================================
+
+- name: Add Argo CD Helm repository
+  ansible.builtin.command:
+    cmd: "helm repo add argo {{ argocd_helm_repo }}"
+  register: result
+  changed_when: "'has been added' in result.stdout"
+  failed_when: false
+
+- name: Update Helm repositories
+  ansible.builtin.command:
+    cmd: helm repo update
+  changed_when: false
+
+- name: Template Argo CD Helm values (stage)
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/argocd-values-stage.yml
+    mode: "0644"
+  vars:
+    argocd_env: stage
+    argocd_server_insecure: true
+
+- name: Install Argo CD (stage)
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install argocd argo/argo-cd
+      --namespace {{ argocd_namespace }} --create-namespace
+      --kube-context {{ stage_context }}
+      --version {{ argocd_chart_version }}
+      --values /tmp/argocd-values-stage.yml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Wait for Argo CD server (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n {{ argocd_namespace }}
+      rollout status deployment/argocd-server --timeout=300s
+  changed_when: false
+
+- name: Template Argo CD Helm values (prod)
+  when: multi_cluster | bool
+  ansible.builtin.template:
+    src: values.yml.j2
+    dest: /tmp/argocd-values-prod.yml
+    mode: "0644"
+  vars:
+    argocd_env: prod
+    argocd_server_insecure: true
+
+- name: Install Argo CD (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      helm upgrade --install argocd argo/argo-cd
+      --namespace {{ argocd_namespace }} --create-namespace
+      --kube-context {{ prod_context }}
+      --version {{ argocd_chart_version }}
+      --values /tmp/argocd-values-prod.yml
+      --wait --timeout 5m
+  register: result
+  changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
+
+- name: Wait for Argo CD server (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n {{ argocd_namespace }}
+      rollout status deployment/argocd-server --timeout=300s
+  changed_when: false
+
+# ============================================================
+# APPLY ARGO CD INGRESSROUTES
+# ============================================================
+
+- name: Apply Argo CD IngressRoute (stage)
+  when: ingress_enabled | default(false) | bool and argocd_hostname_stage | default('') | length > 0
+  block:
+    - name: Template stage Argo CD IngressRoute
+      ansible.builtin.template:
+        src: ingressroutes/argocd.yml.j2
+        dest: /tmp/argocd-ir-stage.yml
+        mode: "0644"
+      vars:
+        argocd_hostname: "{{ argocd_hostname_stage }}"
+
+    - name: Apply stage Argo CD IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-ir-stage.yml"
+      changed_when: true
+
+- name: Apply Argo CD IngressRoute (prod)
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and argocd_hostname_prod | default('') | length > 0
+  block:
+    - name: Template prod Argo CD IngressRoute
+      ansible.builtin.template:
+        src: ingressroutes/argocd.yml.j2
+        dest: /tmp/argocd-ir-prod.yml
+        mode: "0644"
+      vars:
+        argocd_hostname: "{{ argocd_hostname_prod }}"
+
+    - name: Apply prod Argo CD IngressRoute
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-ir-prod.yml"
+      changed_when: true
+
+# ============================================================
+# TEMPLATE AND APPLY APPPROJECTS + APPLICATIONSETS
+# ============================================================
+
+- name: Template AppProjects to argocd/root/
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ playbook_dir }}/../../argocd/root/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: "project-stage.yml.j2", dest: "platform-project-stage.yml" }
+    - { src: "project-prod.yml.j2", dest: "platform-project-prod.yml" }
+
+- name: Template ApplicationSets to argocd/waves/
+  ansible.builtin.template:
+    src: "appsets/{{ item.src }}"
+    dest: "{{ playbook_dir }}/../../argocd/waves/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: "10-traefik.yml.j2", dest: "10-networking/traefik.yml" }
+    - { src: "20-observability.yml.j2", dest: "20-observability/kube-prometheus-stack.yml" }
+    - { src: "30-gatekeeper-core.yml.j2", dest: "30-policy-core/gatekeeper-core.yml" }
+    - { src: "40-gatekeeper-templates.yml.j2", dest: "40-policy-templates/gatekeeper-templates.yml" }
+    - { src: "50-gatekeeper-constraints.yml.j2", dest: "50-policy-constraints/gatekeeper-constraints.yml" }
+    - { src: "60-falco.yml.j2", dest: "60-runtime-security/falco.yml" }
+    - { src: "70-trivy-operator.yml.j2", dest: "70-vulnerability-scanning/trivy-operator.yml" }
+
+# Apply to stage cluster
+- name: Apply stage AppProjects
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply stage ApplicationSets
+  ansible.builtin.shell:
+    cmd: "find {{ playbook_dir }}/../../argocd/waves/ -name '*.yml' -exec kubectl --context {{ stage_context }} apply -f {} \\;"
+  register: result
+  changed_when: true
+
+# Apply to prod cluster (Model B only)
+- name: Apply prod AppProjects
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply prod ApplicationSets
+  when: multi_cluster | bool
+  ansible.builtin.shell:
+    cmd: "find {{ playbook_dir }}/../../argocd/waves/ -name '*.yml' -exec kubectl --context {{ prod_context }} apply -f {} \\;"
+  register: result
+  changed_when: true
+
+# ============================================================
+# WAIT FOR PLATFORM TO BE HEALTHY
+# ============================================================
+
+- name: Wait for Argo CD to process ApplicationSets
+  ansible.builtin.pause:
+    seconds: 15
+
+- name: Display deployment progress
+  ansible.builtin.debug:
+    msg: |
+      Argo CD is now deploying all platform services via ApplicationSets.
+      Sync wave order: Traefik(10) -> Observability(20) -> Gatekeeper(30-50) -> Falco(60) -> Trivy(70)
+
+      Monitor progress:
+        kubectl --context {{ stage_context }} -n argocd get applications -w
+
+# ============================================================
+# PI-HOLE DNS (if Traefik + ingress enabled)
+# ============================================================
+
+- name: Wait for Traefik to get LoadBalancer IP (stage)
+  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl --context {{ stage_context }} -n traefik
+      get svc -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+  register: traefik_ip_stage_raw
+  changed_when: false
+  retries: 30
+  delay: 15
+  until: traefik_ip_stage_raw.stdout | trim | length > 0
+
+- name: Wait for Traefik to get LoadBalancer IP (prod)
+  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool and multi_cluster | bool
+  ansible.builtin.shell:
+    cmd: >-
+      kubectl --context {{ prod_context }} -n traefik
+      get svc -l app.kubernetes.io/name=traefik
+      -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+  register: traefik_ip_prod_raw
+  changed_when: false
+  retries: 30
+  delay: 15
+  until: traefik_ip_prod_raw.stdout | trim | length > 0
+
+- name: Set Traefik IP facts
+  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool
+  ansible.builtin.set_fact:
+    traefik_ip_stage: "{{ traefik_ip_stage_raw.stdout | trim }}"
+    traefik_ip_prod: "{{ (traefik_ip_prod_raw.stdout | trim) if multi_cluster | bool else traefik_ip_stage_raw.stdout | trim }}"
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+- name: Clean up temp files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/argocd-values-stage.yml
+    - /tmp/argocd-values-prod.yml
+    - /tmp/argocd-ir-stage.yml
+    - /tmp/argocd-ir-prod.yml
+
+- name: Display summary
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+       Argo CD Installed -- Platform Deploying
+      ================================================
+
+      Argo CD is deploying all platform services.
+      This takes 5-10 minutes for the full stack.
+
+      Argo CD admin password:
+        Stage: kubectl --context {{ stage_context }} -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+      {% if multi_cluster | bool %}
+        Prod:  kubectl --context {{ prod_context }} -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+      {% endif %}
+
+      {% if argocd_hostname_stage | default('') | length > 0 %}
+      URLs:
+        Stage Argo CD: https://{{ argocd_hostname_stage }}
+      {% if multi_cluster | bool %}
+        Prod Argo CD:  https://{{ argocd_hostname_prod }}
+      {% endif %}
+      {% endif %}
+
+      Next steps:
+        1. git add argocd/ && git commit -m "Generate ApplicationSets" && git push
+        2. Monitor: kubectl -n argocd get applications -w
+        3. Verify: ansible-playbook playbooks/healthcheck.yml
+
+      ================================================
