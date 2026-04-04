@@ -1,0 +1,52 @@
+# Traefik - Singleton (one per cluster)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: traefik
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - env: "stage"
+            project: "platform-stage"
+  template:
+    metadata:
+      name: "traefik-{{env}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: traefik
+      annotations:
+        argocd.argoproj.io/sync-wave: "10"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{project}}"
+      sources:
+        - repoURL: https://traefik.github.io/charts
+          chart: traefik
+          targetRevision: "39.0.7"
+          helm:
+            valueFiles:
+              - $values/platform/traefik/base-values.yaml
+              - "$values/platform/traefik/overlays/{{env}}/values.yaml"
+        - repoURL: https://github.com/brianbeck/PlatformForge.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: traefik
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
