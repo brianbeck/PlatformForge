@@ -13,15 +13,10 @@ prometheus:
         cpu: "2"
         memory: 4Gi
 
-    # Persistent storage in prod -- adjust storageClassName for your cluster
-    storageSpec:
-      volumeClaimTemplate:
-        spec:
-          # storageClassName: your-storage-class
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: 50Gi
+    # Persistent storage disabled -- local-path StorageClass doesn't reliably
+    # support StatefulSets with multiple replicas. Enable when using
+    # distributed storage (Longhorn, Rook/Ceph).
+    storageSpec: {}
 
     # Uncomment to enable remote write to external long-term storage
     # remoteWrite:
