@@ -36,6 +36,9 @@ spec:
         - repoURL: https://github.com/brianbeck/PlatformForge.git
           targetRevision: main
           ref: values
+        - repoURL: https://github.com/brianbeck/PlatformForge.git
+          targetRevision: main
+          path: "platform/observability/overlays/{{env}}"
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{namespace}}"
