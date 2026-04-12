@@ -67,3 +67,15 @@ spec:
           jqPathExpressions:
             - .webhooks[]?.failurePolicy
             - .webhooks[]?.clientConfig.caBundle
+        # Grafana secret contains auto-generated admin password
+        - group: ""
+          kind: Secret
+          name: "observability-{{env}}-grafana"
+          jqPathExpressions:
+            - .data
+        # Grafana deployment checksum annotation changes with secret
+        - group: apps
+          kind: Deployment
+          name: "observability-{{env}}-grafana"
+          jqPathExpressions:
+            - .spec.template.metadata.annotations
