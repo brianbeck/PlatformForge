@@ -38,6 +38,9 @@ spec:
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}
           ref: values
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          path: "platform/observability/overlays/{{ '{{env}}' }}"
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{ '{{namespace}}' }}"
