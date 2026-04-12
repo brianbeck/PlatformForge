@@ -7,24 +7,21 @@ This directory contains AppProjects and ApplicationSets that define all platform
 ```
 argocd/
 ├── root/
-│   ├── platform-project-stage.yml   # AppProject for stage
-│   └── platform-project-prod.yml    # AppProject for prod
-└── waves/
-    ├── 10-networking/
-    │   └── traefik.yml              # Traefik ApplicationSet
-    ├── 20-observability/
-    │   └── kube-prometheus-stack.yml # Observability ApplicationSet
-    ├── 30-policy-core/
-    │   └── gatekeeper-core.yml      # Gatekeeper controller ApplicationSet
-    ├── 40-policy-templates/
-    │   └── gatekeeper-templates.yml  # ConstraintTemplates ApplicationSet
-    ├── 50-policy-constraints/
-    │   └── gatekeeper-constraints.yml # Constraints ApplicationSet
-    ├── 60-runtime-security/
-    │   └── falco.yml                # Falco ApplicationSet
-    └── 70-vulnerability-scanning/
-        └── trivy-operator.yml       # Trivy Operator ApplicationSet
+│   ├── platform-project-stage.yml    # AppProject for stage
+│   └── platform-project-prod.yml     # AppProject for prod
+├── waves-stage/                      # ApplicationSets for stage Argo CD
+│   ├── 10-networking/traefik.yml
+│   ├── 20-observability/kube-prometheus-stack.yml
+│   ├── 30-policy-core/gatekeeper-core.yml
+│   ├── 40-policy-templates/gatekeeper-templates.yml
+│   ├── 50-policy-constraints/gatekeeper-constraints.yml
+│   ├── 60-runtime-security/falco.yml
+│   └── 70-vulnerability-scanning/trivy-operator.yml
+└── waves-prod/                       # ApplicationSets for prod Argo CD
+    └── (same structure, with prod generator entries)
 ```
+
+In Model B, each Argo CD instance gets its own ApplicationSets with environment-specific generator entries. In Model A, both directories exist but `waves-prod` contains the same generators as `waves-stage` for namespace-scoped services.
 
 ## Sync Wave Order
 

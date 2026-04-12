@@ -100,13 +100,7 @@
            Configuration saved to environments.yml
           ================================================
 
-           To deploy all services:
-             ansible-playbook playbooks/deploy-all.yml
-
-           Or deploy individually in order:
-             ansible-playbook playbooks/deploy-ingress.yml
-             ansible-playbook playbooks/deploy-observability.yml
-             ansible-playbook playbooks/deploy-devsecops.yml
-             ansible-playbook playbooks/deploy-continuousdeployment.yml
+           To deploy all platform services:
+             ansible-playbook playbooks/install-argocd.yml
 
           ================================================

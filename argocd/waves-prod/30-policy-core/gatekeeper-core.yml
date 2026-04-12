@@ -1,0 +1,52 @@
+# Gatekeeper Controller - Singleton (one per cluster)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: gatekeeper-core
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - env: "prod"
+            project: "platform-prod"
+  template:
+    metadata:
+      name: "gatekeeper-core-{{env}}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: gatekeeper
+      annotations:
+        argocd.argoproj.io/sync-wave: "30"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{project}}"
+      sources:
+        - repoURL: https://open-policy-agent.github.io/gatekeeper/charts
+          chart: gatekeeper
+          targetRevision: "3.22.0"
+          helm:
+            valueFiles:
+              - $values/platform/gatekeeper/base-values.yaml
+              - "$values/platform/gatekeeper/overlays/{{env}}/values.yaml"
+        - repoURL: https://github.com/brianbeck/PlatformForge.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: gatekeeper-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

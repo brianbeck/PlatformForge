@@ -1,6 +1,6 @@
 ---
 # Register service hostnames with Pi-hole v6 DNS servers.
-# Called by deploy-dns.yml which sets traefik_ip_stage/prod before invoking this role.
+# Called by install-argocd.yml or deploy-dns.yml which set traefik_ip_stage/prod before invoking this role.
 
 - name: Skip Pi-hole DNS if not enabled
   when: not (pihole_enabled | default(false) | bool)

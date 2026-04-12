@@ -1,7 +1,7 @@
 ---
 # Register service hostnames with Pi-hole DNS servers.
 #
-# Prerequisites: bootstrap.yml and deploy-ingress.yml have been run
+# Prerequisites: bootstrap.yml and install-argocd.yml have been run
 #
 # Usage:
 #   cd ansible

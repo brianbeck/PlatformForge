@@ -22,22 +22,17 @@
     monitoring_stage_namespace: "monitoring"
     monitoring_prod_namespace: "monitoring"
 
-# Singleton services: one per cluster
-# Model A: one entry (stage only)
-# Model B: one entry per Argo CD instance (each manages its own env)
-- name: Build singleton generator entries
+# Build generator entries for STAGE Argo CD
+- name: Build stage singleton generator entries
   ansible.builtin.set_fact:
-    singleton_envs:
+    stage_singleton_envs:
       - env: stage
         project: platform-stage
 
-# Namespace-scoped services: per environment
-# Model A: two entries (both on same cluster, different namespaces)
-# Model B: one entry per Argo CD instance
-- name: Build namespaced generator entries (Model A)
+- name: Build stage namespaced generator entries (Model A - includes prod)
   when: single_cluster | bool
   ansible.builtin.set_fact:
-    namespaced_envs:
+    stage_namespaced_envs:
       - env: stage
         project: platform-stage
         falco_namespace: "{{ falco_stage_namespace }}"
@@ -47,23 +42,44 @@
         falco_namespace: "{{ falco_prod_namespace }}"
         monitoring_namespace: "{{ monitoring_prod_namespace }}"
 
-- name: Build namespaced generator entries (Model B)
+- name: Build stage namespaced generator entries (Model B - stage only)
   when: multi_cluster | bool
   ansible.builtin.set_fact:
-    namespaced_envs:
+    stage_namespaced_envs:
       - env: stage
         project: platform-stage
         falco_namespace: "{{ falco_stage_namespace }}"
         monitoring_namespace: "{{ monitoring_stage_namespace }}"
 
-# Constraint entries: cluster-scoped, env determines enforcement level
-# Model A: stage only (dryrun) -- prod would overwrite with same resource names
-# Model B: one entry per Argo CD instance
-- name: Build constraint generator entries
+- name: Build stage constraint generator entries
   ansible.builtin.set_fact:
-    constraint_envs:
+    stage_constraint_envs:
       - env: stage
         project: platform-stage
+
+# Build generator entries for PROD Argo CD (Model B only)
+- name: Build prod singleton generator entries
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    prod_singleton_envs:
+      - env: prod
+        project: platform-prod
+
+- name: Build prod namespaced generator entries
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    prod_namespaced_envs:
+      - env: prod
+        project: platform-prod
+        falco_namespace: "{{ falco_prod_namespace }}"
+        monitoring_namespace: "{{ monitoring_prod_namespace }}"
+
+- name: Build prod constraint generator entries
+  when: multi_cluster | bool
+  ansible.builtin.set_fact:
+    prod_constraint_envs:
+      - env: prod
+        project: platform-prod
 
 # ============================================================
 # INSTALL ARGO CD
@@ -141,8 +157,104 @@
   changed_when: false
 
 # ============================================================
-# APPLY ARGO CD INGRESSROUTES
+# TEMPLATE APPPROJECTS + APPLICATIONSETS
+# Stage goes to argocd/waves-stage/, Prod to argocd/waves-prod/
+# Both are committed to Git for full GitOps compliance.
 # ============================================================
+
+- name: Define ApplicationSet wave list
+  ansible.builtin.set_fact:
+    appset_waves:
+      - { src: "10-traefik.yml.j2", dest: "10-networking/traefik.yml" }
+      - { src: "20-observability.yml.j2", dest: "20-observability/kube-prometheus-stack.yml" }
+      - { src: "30-gatekeeper-core.yml.j2", dest: "30-policy-core/gatekeeper-core.yml" }
+      - { src: "40-gatekeeper-templates.yml.j2", dest: "40-policy-templates/gatekeeper-templates.yml" }
+      - { src: "50-gatekeeper-constraints.yml.j2", dest: "50-policy-constraints/gatekeeper-constraints.yml" }
+      - { src: "60-falco.yml.j2", dest: "60-runtime-security/falco.yml" }
+      - { src: "70-trivy-operator.yml.j2", dest: "70-vulnerability-scanning/trivy-operator.yml" }
+
+- name: Template AppProjects to argocd/root/
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ playbook_dir }}/../../argocd/root/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: "project-stage.yml.j2", dest: "platform-project-stage.yml" }
+    - { src: "project-prod.yml.j2", dest: "platform-project-prod.yml" }
+
+- name: Template stage ApplicationSets to argocd/waves-stage/
+  ansible.builtin.template:
+    src: "appsets/{{ item.src }}"
+    dest: "{{ playbook_dir }}/../../argocd/waves-stage/{{ item.dest }}"
+    mode: "0644"
+  vars:
+    singleton_envs: "{{ stage_singleton_envs }}"
+    namespaced_envs: "{{ stage_namespaced_envs }}"
+    constraint_envs: "{{ stage_constraint_envs }}"
+  loop: "{{ appset_waves }}"
+
+- name: Template prod ApplicationSets to argocd/waves-prod/
+  ansible.builtin.template:
+    src: "appsets/{{ item.src }}"
+    dest: "{{ playbook_dir }}/../../argocd/waves-prod/{{ item.dest }}"
+    mode: "0644"
+  vars:
+    singleton_envs: "{{ prod_singleton_envs | default(stage_singleton_envs) }}"
+    namespaced_envs: "{{ prod_namespaced_envs | default(stage_namespaced_envs) }}"
+    constraint_envs: "{{ prod_constraint_envs | default(stage_constraint_envs) }}"
+  loop: "{{ appset_waves }}"
+
+# ============================================================
+# APPLY TO CLUSTERS
+# ============================================================
+
+- name: Apply stage AppProjects
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply stage ApplicationSets
+  ansible.builtin.shell:
+    cmd: "find {{ playbook_dir }}/../../argocd/waves-stage/ -name '*.yml' -exec kubectl --context {{ stage_context }} apply -f {} \\;"
+  register: result
+  changed_when: true
+
+- name: Apply prod AppProjects
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
+  register: result
+  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
+
+- name: Apply prod ApplicationSets
+  when: multi_cluster | bool
+  ansible.builtin.shell:
+    cmd: "find {{ playbook_dir }}/../../argocd/waves-prod/ -name '*.yml' -exec kubectl --context {{ prod_context }} apply -f {} \\;"
+  register: result
+  changed_when: true
+
+# ============================================================
+# WAIT FOR PLATFORM TO BE HEALTHY
+# ============================================================
+
+- name: Wait for Argo CD to process ApplicationSets
+  ansible.builtin.pause:
+    seconds: 15
+
+# ============================================================
+# APPLY ARGO CD INGRESSROUTES (after Traefik deploys)
+# ============================================================
+
+- name: Wait for Traefik CRDs to be available (stage)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ stage_context }} get crd ingressroutes.traefik.io"
+  register: traefik_crd_check
+  changed_when: false
+  retries: 30
+  delay: 10
+  until: traefik_crd_check.rc == 0
 
 - name: Apply Argo CD IngressRoute (stage)
   when: ingress_enabled | default(false) | bool and argocd_hostname_stage | default('') | length > 0
@@ -160,6 +272,16 @@
         cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-ir-stage.yml"
       changed_when: true
 
+- name: Wait for Traefik CRDs to be available (prod)
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool
+  ansible.builtin.command:
+    cmd: "kubectl --context {{ prod_context }} get crd ingressroutes.traefik.io"
+  register: traefik_crd_check_prod
+  changed_when: false
+  retries: 30
+  delay: 10
+  until: traefik_crd_check_prod.rc == 0
+
 - name: Apply Argo CD IngressRoute (prod)
   when: ingress_enabled | default(false) | bool and multi_cluster | bool and argocd_hostname_prod | default('') | length > 0
   block:
@@ -175,69 +297,6 @@
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-ir-prod.yml"
       changed_when: true
-
-# ============================================================
-# TEMPLATE AND APPLY APPPROJECTS + APPLICATIONSETS
-# ============================================================
-
-- name: Template AppProjects to argocd/root/
-  ansible.builtin.template:
-    src: "{{ item.src }}"
-    dest: "{{ playbook_dir }}/../../argocd/root/{{ item.dest }}"
-    mode: "0644"
-  loop:
-    - { src: "project-stage.yml.j2", dest: "platform-project-stage.yml" }
-    - { src: "project-prod.yml.j2", dest: "platform-project-prod.yml" }
-
-- name: Template ApplicationSets to argocd/waves/
-  ansible.builtin.template:
-    src: "appsets/{{ item.src }}"
-    dest: "{{ playbook_dir }}/../../argocd/waves/{{ item.dest }}"
-    mode: "0644"
-  loop:
-    - { src: "10-traefik.yml.j2", dest: "10-networking/traefik.yml" }
-    - { src: "20-observability.yml.j2", dest: "20-observability/kube-prometheus-stack.yml" }
-    - { src: "30-gatekeeper-core.yml.j2", dest: "30-policy-core/gatekeeper-core.yml" }
-    - { src: "40-gatekeeper-templates.yml.j2", dest: "40-policy-templates/gatekeeper-templates.yml" }
-    - { src: "50-gatekeeper-constraints.yml.j2", dest: "50-policy-constraints/gatekeeper-constraints.yml" }
-    - { src: "60-falco.yml.j2", dest: "60-runtime-security/falco.yml" }
-    - { src: "70-trivy-operator.yml.j2", dest: "70-vulnerability-scanning/trivy-operator.yml" }
-
-# Apply to stage cluster
-- name: Apply stage AppProjects
-  ansible.builtin.command:
-    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
-  register: result
-  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
-
-- name: Apply stage ApplicationSets
-  ansible.builtin.shell:
-    cmd: "find {{ playbook_dir }}/../../argocd/waves/ -name '*.yml' -exec kubectl --context {{ stage_context }} apply -f {} \\;"
-  register: result
-  changed_when: true
-
-# Apply to prod cluster (Model B only)
-- name: Apply prod AppProjects
-  when: multi_cluster | bool
-  ansible.builtin.command:
-    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
-  register: result
-  changed_when: "'configured' in result.stdout or 'created' in result.stdout"
-
-- name: Apply prod ApplicationSets
-  when: multi_cluster | bool
-  ansible.builtin.shell:
-    cmd: "find {{ playbook_dir }}/../../argocd/waves/ -name '*.yml' -exec kubectl --context {{ prod_context }} apply -f {} \\;"
-  register: result
-  changed_when: true
-
-# ============================================================
-# WAIT FOR PLATFORM TO BE HEALTHY
-# ============================================================
-
-- name: Wait for Argo CD to process ApplicationSets
-  ansible.builtin.pause:
-    seconds: 15
 
 - name: Display deployment progress
   ansible.builtin.debug:
