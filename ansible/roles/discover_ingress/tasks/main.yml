@@ -68,6 +68,17 @@
   ansible.builtin.set_fact:
     fqdn_default: "{{ saved.base_fqdn | default(detected_fqdn, true) }}"
 
+- name: Prompt for admin email
+  ansible.builtin.pause:
+    prompt: >-
+      Admin email address (used for Let's Encrypt certificates)
+      {{ '[' + saved.admin_email + ']' if saved.admin_email | default('') | length > 0 else '' }}
+  register: admin_email_input
+
+- name: Set admin email fact
+  ansible.builtin.set_fact:
+    admin_email: "{{ admin_email_input.user_input | trim | default(saved.admin_email | default(''), true) }}"
+
 - name: Prompt for FQDN
   ansible.builtin.pause:
     prompt: |
@@ -340,6 +351,7 @@
     block: |
       ingress_enabled: {{ ingress_enabled }}
       traefik_enabled: {{ traefik_enabled }}
+      admin_email: "{{ admin_email | default('') }}"
       base_fqdn: "{{ base_fqdn }}"
       argocd_hostname_stage: "{{ argocd_hostname_stage }}"
       argocd_hostname_prod: "{{ argocd_hostname_prod }}"

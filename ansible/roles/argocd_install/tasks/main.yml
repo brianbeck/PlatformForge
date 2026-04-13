@@ -315,6 +315,47 @@
         cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-ir-prod.yml"
       changed_when: true
 
+# ============================================================
+# TEMPLATE CERT-MANAGER AND OBSERVABILITY FILES
+# These go into platform/ and get picked up by Argo CD from Git
+# ============================================================
+
+- name: Template cert-manager ClusterIssuer (stage)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.template:
+    src: cert-manager/cluster-issuer.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cluster-issuer.yaml"
+    mode: "0644"
+
+- name: Template cert-manager ClusterIssuer (prod)
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.template:
+    src: cert-manager/cluster-issuer.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cluster-issuer.yaml"
+    mode: "0644"
+
+- name: Template observability IngressRoutes (stage)
+  when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0
+  ansible.builtin.template:
+    src: observability/ingressroutes.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/ingressroutes.yaml"
+    mode: "0644"
+  vars:
+    grafana_hostname: "{{ grafana_hostname_stage }}"
+    prometheus_hostname: "{{ prometheus_hostname_stage }}"
+    env_name: stage
+
+- name: Template observability IngressRoutes (prod)
+  when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
+  ansible.builtin.template:
+    src: observability/ingressroutes.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/ingressroutes.yaml"
+    mode: "0644"
+  vars:
+    grafana_hostname: "{{ grafana_hostname_prod }}"
+    prometheus_hostname: "{{ prometheus_hostname_prod }}"
+    env_name: prod
+
 - name: Display deployment progress
   ansible.builtin.debug:
     msg: |
