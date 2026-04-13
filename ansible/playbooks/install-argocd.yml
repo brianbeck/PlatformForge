@@ -27,6 +27,7 @@
       loop:
         - kubectl
         - helm
+        - kubeseal
       changed_when: false
       failed_when: result.rc != 0
       register: result

@@ -186,6 +186,74 @@
     prometheus_hostname_stage: "{{ (prometheus_stage_input.user_input | trim | default(default_prometheus_stage, true)) if prometheus_ingress_enabled | bool else '' }}"
     prometheus_hostname_prod: "{{ (prometheus_prod_input.user_input | trim | default(default_prometheus_prod, true)) if prometheus_ingress_enabled | bool else '' }}"
 
+# --- Load existing vault secrets (for Cloudflare + Pi-hole defaults) ---
+
+- name: Check for existing vault secrets file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../vault/secrets.yml"
+  register: vault_file
+
+- name: Check for existing vault password file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../.vault_pass"
+  register: vault_pass_exists
+
+- name: Decrypt existing vault secrets
+  when: vault_file.stat.exists and vault_pass_exists.stat.exists
+  ansible.builtin.command:
+    cmd: >-
+      ansible-vault decrypt
+      --vault-password-file {{ playbook_dir }}/../.vault_pass
+      --output -
+      {{ playbook_dir }}/../vault/secrets.yml
+  register: vault_decrypt_early
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Set existing secrets from vault
+  when: vault_file.stat.exists and vault_pass_exists.stat.exists and vault_decrypt_early.rc == 0
+  ansible.builtin.set_fact:
+    existing_cloudflare_token: "{{ (vault_decrypt_early.stdout | from_yaml).cloudflare_api_token | default('') }}"
+    existing_pihole_primary_ip: "{{ (vault_decrypt_early.stdout | from_yaml).pihole_primary_ip | default('') }}"
+    existing_pihole_primary_password: "{{ (vault_decrypt_early.stdout | from_yaml).pihole_primary_password | default('') }}"
+    existing_pihole_secondary_ip: "{{ (vault_decrypt_early.stdout | from_yaml).pihole_secondary_ip | default('') }}"
+    existing_pihole_secondary_password: "{{ (vault_decrypt_early.stdout | from_yaml).pihole_secondary_password | default('') }}"
+  no_log: true
+
+- name: Initialize empty secrets if no vault
+  when: not vault_file.stat.exists or not vault_pass_exists.stat.exists or (vault_decrypt_early is defined and vault_decrypt_early.rc != 0)
+  ansible.builtin.set_fact:
+    existing_cloudflare_token: ""
+    existing_pihole_primary_ip: ""
+    existing_pihole_primary_password: ""
+    existing_pihole_secondary_ip: ""
+    existing_pihole_secondary_password: ""
+
+# --- Cloudflare API Token (for cert-manager DNS-01 challenge) ---
+
+- name: Prompt for Cloudflare API token
+  ansible.builtin.pause:
+    prompt: |
+
+      Cloudflare API Token
+      ====================
+      Required for Let's Encrypt DNS-01 certificate validation.
+      Create at: https://dash.cloudflare.com/profile/api-tokens
+      Permissions: Zone > DNS > Edit, Zone > Zone > Read
+      {% if existing_cloudflare_token | default('') | length > 0 %}
+
+      [stored - press Enter to keep]
+      {% endif %}
+
+      Cloudflare API token
+    echo: false
+  register: cloudflare_token_input
+
+- name: Set Cloudflare token fact
+  ansible.builtin.set_fact:
+    cloudflare_api_token: "{{ cloudflare_token_input.user_input | trim | default(existing_cloudflare_token | default(''), true) }}"
+
 # --- Pi-hole DNS ---
 
 - name: Prompt to enable Pi-hole DNS registration
@@ -212,46 +280,6 @@
 - name: Collect Pi-hole configuration
   when: pihole_enabled | bool
   block:
-    - name: Check for existing vault secrets file
-      ansible.builtin.stat:
-        path: "{{ playbook_dir }}/../vault/secrets.yml"
-      register: vault_file
-
-    - name: Check for existing vault password file
-      ansible.builtin.stat:
-        path: "{{ playbook_dir }}/../.vault_pass"
-      register: vault_pass_exists
-
-    - name: Decrypt existing vault secrets
-      when: vault_file.stat.exists and vault_pass_exists.stat.exists
-      ansible.builtin.command:
-        cmd: >-
-          ansible-vault decrypt
-          --vault-password-file {{ playbook_dir }}/../.vault_pass
-          --output -
-          {{ playbook_dir }}/../vault/secrets.yml
-      register: vault_decrypt
-      changed_when: false
-      failed_when: false
-      no_log: true
-
-    - name: Set existing secrets facts
-      when: vault_file.stat.exists and vault_pass_exists.stat.exists and vault_decrypt.rc == 0
-      ansible.builtin.set_fact:
-        existing_pihole_primary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_ip | default('') }}"
-        existing_pihole_primary_password: "{{ (vault_decrypt.stdout | from_yaml).pihole_primary_password | default('') }}"
-        existing_pihole_secondary_ip: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_ip | default('') }}"
-        existing_pihole_secondary_password: "{{ (vault_decrypt.stdout | from_yaml).pihole_secondary_password | default('') }}"
-      no_log: true
-
-    - name: Initialize empty secrets if no vault
-      when: not vault_file.stat.exists or not vault_pass_exists.stat.exists or (vault_decrypt is defined and vault_decrypt.rc != 0)
-      ansible.builtin.set_fact:
-        existing_pihole_primary_ip: ""
-        existing_pihole_primary_password: ""
-        existing_pihole_secondary_ip: ""
-        existing_pihole_secondary_password: ""
-
     - name: Prompt for primary Pi-hole IP
       ansible.builtin.pause:
         prompt: >-
@@ -297,50 +325,51 @@
           - pihole_primary_password | length > 0
         fail_msg: "Primary Pi-hole IP and API token are required."
 
-    # --- Save secrets to Ansible Vault ---
+# --- Save ALL secrets to Ansible Vault ---
+# This runs outside the Pi-hole block so Cloudflare token is always saved
 
-    - name: Check for vault password file
-      ansible.builtin.stat:
-        path: "{{ playbook_dir }}/../.vault_pass"
-      register: vault_pass_file
+- name: Check for vault password file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../.vault_pass"
+  register: vault_pass_file
 
-    - name: Create vault password file if not exists
-      when: not vault_pass_file.stat.exists
-      block:
-        - name: Prompt for vault password
-          ansible.builtin.pause:
-            prompt: |
+- name: Create vault password file if not exists
+  when: not vault_pass_file.stat.exists
+  block:
+    - name: Prompt for vault password
+      ansible.builtin.pause:
+        prompt: |
 
-              Ansible Vault Password
-              ======================
-              A password is needed to encrypt Pi-hole API tokens.
-              This password will be saved to ansible/.vault_pass
-              (gitignored). You'll need it if you re-run bootstrap.
+          Ansible Vault Password
+          ======================
+          A password is needed to encrypt secrets (Cloudflare, Pi-hole).
+          This password will be saved to ansible/.vault_pass
+          (gitignored). You'll need it if you re-run bootstrap.
 
-              Enter vault password
-            echo: false
-          register: vault_pass_input
+          Enter vault password
+        echo: false
+      register: vault_pass_input
 
-        - name: Write vault password file
-          ansible.builtin.copy:
-            content: "{{ vault_pass_input.user_input }}"
-            dest: "{{ playbook_dir }}/../.vault_pass"
-            mode: "0600"
-
-    - name: Write secrets to vault file
+    - name: Write vault password file
       ansible.builtin.copy:
-        content: "{{ {'pihole_primary_ip': pihole_primary_ip, 'pihole_primary_password': pihole_primary_password, 'pihole_secondary_ip': pihole_secondary_ip, 'pihole_secondary_password': pihole_secondary_password} | to_nice_yaml }}"
-        dest: "{{ playbook_dir }}/../vault/secrets.yml"
+        content: "{{ vault_pass_input.user_input }}"
+        dest: "{{ playbook_dir }}/../.vault_pass"
         mode: "0600"
 
-    - name: Encrypt vault file
-      ansible.builtin.command:
-        cmd: >-
-          ansible-vault encrypt
-          --vault-password-file {{ playbook_dir }}/../.vault_pass
-          {{ playbook_dir }}/../vault/secrets.yml
-      changed_when: true
-      failed_when: false
+- name: Write secrets to vault file
+  ansible.builtin.copy:
+    content: "{{ {'cloudflare_api_token': cloudflare_api_token | default(''), 'pihole_primary_ip': pihole_primary_ip | default(''), 'pihole_primary_password': pihole_primary_password | default(''), 'pihole_secondary_ip': pihole_secondary_ip | default(''), 'pihole_secondary_password': pihole_secondary_password | default('')} | to_nice_yaml }}"
+    dest: "{{ playbook_dir }}/../vault/secrets.yml"
+    mode: "0600"
+
+- name: Encrypt vault file
+  ansible.builtin.command:
+    cmd: >-
+      ansible-vault encrypt
+      --vault-password-file {{ playbook_dir }}/../.vault_pass
+      {{ playbook_dir }}/../vault/secrets.yml
+  changed_when: true
+  failed_when: false
 
 # --- Write ingress configuration to environments.yml ---
 
