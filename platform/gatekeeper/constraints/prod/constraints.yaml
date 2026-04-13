@@ -31,6 +31,8 @@ spec:
       - trivy-system
       - sealed-secrets
       - external-secrets
+      - metallb-system
+      - local-path-storage
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
@@ -56,6 +58,8 @@ spec:
       - trivy-system
       - sealed-secrets
       - external-secrets
+      - metallb-system
+      - local-path-storage
   parameters:
     labels:
       - key: "app.kubernetes.io/managed-by"
@@ -85,6 +89,8 @@ spec:
       - trivy-system
       - sealed-secrets
       - external-secrets
+      - metallb-system
+      - local-path-storage
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sBlockLatestTag
@@ -110,6 +116,8 @@ spec:
       - trivy-system
       - sealed-secrets
       - external-secrets
+      - metallb-system
+      - local-path-storage
   parameters:
     exemptImages: []
 ---
@@ -137,6 +145,8 @@ spec:
       - trivy-system
       - sealed-secrets
       - external-secrets
+      - metallb-system
+      - local-path-storage
   parameters:
     allowHostNetwork: false
     allowHostPID: false
@@ -166,3 +176,5 @@ spec:
       - trivy-system
       - sealed-secrets
       - external-secrets
+      - metallb-system
+      - local-path-storage
