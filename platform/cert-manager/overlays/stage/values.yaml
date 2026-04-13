@@ -1,0 +1,8 @@
+# cert-manager stage overlay
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi

@@ -31,6 +31,7 @@ spec:
       - external-secrets
       - metallb-system
       - local-path-storage
+      - cert-manager
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
@@ -58,6 +59,7 @@ spec:
       - external-secrets
       - metallb-system
       - local-path-storage
+      - cert-manager
   parameters:
     labels:
       - key: "app.kubernetes.io/managed-by"
@@ -89,6 +91,7 @@ spec:
       - external-secrets
       - metallb-system
       - local-path-storage
+      - cert-manager
   parameters:
     requireCPU: true
     requireMemory: true
@@ -119,6 +122,7 @@ spec:
       - external-secrets
       - metallb-system
       - local-path-storage
+      - cert-manager
   parameters:
     exemptImages: []
 ---
@@ -148,6 +152,7 @@ spec:
       - external-secrets
       - metallb-system
       - local-path-storage
+      - cert-manager
   parameters:
     allowHostNetwork: false
     allowHostPID: false
@@ -179,3 +184,4 @@ spec:
       - external-secrets
       - metallb-system
       - local-path-storage
+      - cert-manager

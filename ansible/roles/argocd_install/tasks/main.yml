@@ -180,6 +180,7 @@
   ansible.builtin.set_fact:
     appset_waves: >-
       {{ appset_secrets + [
+        {"src": "05-cert-manager.yml.j2", "dest": "05-cert-manager/cert-manager.yml"},
         {"src": "10-traefik.yml.j2", "dest": "10-networking/traefik.yml"},
         {"src": "20-observability.yml.j2", "dest": "20-observability/kube-prometheus-stack.yml"},
         {"src": "30-gatekeeper-core.yml.j2", "dest": "30-policy-core/gatekeeper-core.yml"},

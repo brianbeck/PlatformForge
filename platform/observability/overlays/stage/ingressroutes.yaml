@@ -14,7 +14,20 @@ spec:
         - name: observability-stage-grafana
           port: 80
           scheme: http
-  tls: {}
+  tls:
+    secretName: grafana-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls
+spec:
+  secretName: grafana-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - grafana-stage.brianbeck.net
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -32,4 +45,17 @@ spec:
         - name: prometheus-operated
           port: 9090
           scheme: http
-  tls: {}
+  tls:
+    secretName: prometheus-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: prometheus-tls
+spec:
+  secretName: prometheus-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - prometheus-stage.brianbeck.net

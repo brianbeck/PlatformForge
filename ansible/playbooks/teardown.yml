@@ -127,6 +127,7 @@
         - trivy-system
         - sealed-secrets
         - external-secrets
+        - cert-manager
       changed_when: false
       failed_when: false
 
@@ -152,6 +153,7 @@
         - trivy-system
         - sealed-secrets
         - external-secrets
+        - cert-manager
       changed_when: false
       failed_when: false
 
@@ -237,6 +239,7 @@
         - trivy-system
         - sealed-secrets
         - external-secrets
+        - cert-manager
       changed_when: false
       failed_when: false
 
@@ -262,6 +265,7 @@
         - trivy-system
         - sealed-secrets
         - external-secrets
+        - cert-manager
       changed_when: false
       failed_when: false
 

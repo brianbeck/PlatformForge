@@ -1,0 +1,60 @@
+# cert-manager - Singleton (one per cluster)
+# Wave 5: after secrets (-10), before Traefik (10)
+# CRDs must exist before ClusterIssuers and Certificates can be created
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cert-manager
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+{% for entry in singleton_envs %}
+          - env: "{{ entry.env }}"
+            project: "{{ entry.project }}"
+{% endfor %}
+  template:
+    metadata:
+      name: "cert-manager-{{ '{{env}}' }}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: cert-manager
+      annotations:
+        argocd.argoproj.io/sync-wave: "5"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{ '{{project}}' }}"
+      sources:
+        - repoURL: https://charts.jetstack.io
+          chart: cert-manager
+          targetRevision: "v1.20.2"
+          helm:
+            valueFiles:
+              - $values/platform/cert-manager/base-values.yaml
+              - "$values/platform/cert-manager/overlays/{{ '{{env}}' }}/values.yaml"
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          ref: values
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          path: "platform/cert-manager/overlays/{{ '{{env}}' }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: cert-manager
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

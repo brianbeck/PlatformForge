@@ -1,0 +1,41 @@
+# cert-manager base Helm values
+# Automated TLS certificate management with Let's Encrypt
+
+# Install CRDs with the chart
+crds:
+  enabled: true
+
+# Resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Prometheus metrics
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true
+    labels:
+      app.kubernetes.io/part-of: platformforge
