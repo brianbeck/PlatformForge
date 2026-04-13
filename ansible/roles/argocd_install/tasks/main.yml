@@ -162,16 +162,32 @@
 # Both are committed to Git for full GitOps compliance.
 # ============================================================
 
+- name: Define secrets ApplicationSet
+  ansible.builtin.set_fact:
+    appset_secrets:
+      - src: "-10-sealed-secrets.yml.j2"
+        dest: "-10-secrets/sealed-secrets.yml"
+  when: secrets_strategy | default('sealed-secrets') == 'sealed-secrets'
+
+- name: Define secrets ApplicationSet (external)
+  ansible.builtin.set_fact:
+    appset_secrets:
+      - src: "-10-external-secrets.yml.j2"
+        dest: "-10-secrets/external-secrets.yml"
+  when: secrets_strategy | default('sealed-secrets') == 'external-secrets'
+
 - name: Define ApplicationSet wave list
   ansible.builtin.set_fact:
-    appset_waves:
-      - { src: "10-traefik.yml.j2", dest: "10-networking/traefik.yml" }
-      - { src: "20-observability.yml.j2", dest: "20-observability/kube-prometheus-stack.yml" }
-      - { src: "30-gatekeeper-core.yml.j2", dest: "30-policy-core/gatekeeper-core.yml" }
-      - { src: "40-gatekeeper-templates.yml.j2", dest: "40-policy-templates/gatekeeper-templates.yml" }
-      - { src: "50-gatekeeper-constraints.yml.j2", dest: "50-policy-constraints/gatekeeper-constraints.yml" }
-      - { src: "60-falco.yml.j2", dest: "60-runtime-security/falco.yml" }
-      - { src: "70-trivy-operator.yml.j2", dest: "70-vulnerability-scanning/trivy-operator.yml" }
+    appset_waves: >-
+      {{ appset_secrets + [
+        {"src": "10-traefik.yml.j2", "dest": "10-networking/traefik.yml"},
+        {"src": "20-observability.yml.j2", "dest": "20-observability/kube-prometheus-stack.yml"},
+        {"src": "30-gatekeeper-core.yml.j2", "dest": "30-policy-core/gatekeeper-core.yml"},
+        {"src": "40-gatekeeper-templates.yml.j2", "dest": "40-policy-templates/gatekeeper-templates.yml"},
+        {"src": "50-gatekeeper-constraints.yml.j2", "dest": "50-policy-constraints/gatekeeper-constraints.yml"},
+        {"src": "60-falco.yml.j2", "dest": "60-runtime-security/falco.yml"},
+        {"src": "70-trivy-operator.yml.j2", "dest": "70-vulnerability-scanning/trivy-operator.yml"}
+      ] }}
 
 - name: Template AppProjects to argocd/root/
   ansible.builtin.template:
@@ -302,7 +318,7 @@
   ansible.builtin.debug:
     msg: |
       Argo CD is now deploying all platform services via ApplicationSets.
-      Sync wave order: Traefik(10) -> Observability(20) -> Gatekeeper(30-50) -> Falco(60) -> Trivy(70)
+      Sync wave order: Secrets(-10) -> Traefik(10) -> Observability(20) -> Gatekeeper(30-50) -> Falco(60) -> Trivy(70)
 
       Monitor progress:
         kubectl --context {{ stage_context }} -n argocd get applications -w

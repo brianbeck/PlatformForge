@@ -125,6 +125,8 @@
         - falco
         - falco-stage
         - trivy-system
+        - sealed-secrets
+        - external-secrets
       changed_when: false
       failed_when: false
 
@@ -148,6 +150,8 @@
         - falco
         - falco-stage
         - trivy-system
+        - sealed-secrets
+        - external-secrets
       changed_when: false
       failed_when: false
 
@@ -231,6 +235,8 @@
         - gatekeeper-system
         - falco
         - trivy-system
+        - sealed-secrets
+        - external-secrets
       changed_when: false
       failed_when: false
 
@@ -254,6 +260,8 @@
         - falco
         - falco-prod
         - trivy-system
+        - sealed-secrets
+        - external-secrets
       changed_when: false
       failed_when: false
 

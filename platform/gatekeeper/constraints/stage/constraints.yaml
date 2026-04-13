@@ -27,6 +27,8 @@ spec:
       - monitoring-stage
       - traefik
       - trivy-system
+      - sealed-secrets
+      - external-secrets
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
@@ -50,6 +52,8 @@ spec:
       - monitoring-stage
       - traefik
       - trivy-system
+      - sealed-secrets
+      - external-secrets
   parameters:
     labels:
       - key: "app.kubernetes.io/managed-by"
@@ -77,6 +81,8 @@ spec:
       - monitoring-stage
       - traefik
       - trivy-system
+      - sealed-secrets
+      - external-secrets
   parameters:
     requireCPU: true
     requireMemory: true
@@ -103,6 +109,8 @@ spec:
       - monitoring-stage
       - traefik
       - trivy-system
+      - sealed-secrets
+      - external-secrets
   parameters:
     exemptImages: []
 ---
@@ -128,6 +136,8 @@ spec:
       - monitoring-stage
       - traefik
       - trivy-system
+      - sealed-secrets
+      - external-secrets
   parameters:
     allowHostNetwork: false
     allowHostPID: false
@@ -155,3 +165,5 @@ spec:
       - monitoring-stage
       - traefik
       - trivy-system
+      - sealed-secrets
+      - external-secrets

@@ -1,0 +1,21 @@
+# Sealed Secrets Controller base Helm values
+# Encrypts secrets in Git; only the controller can decrypt them.
+
+# Controller configuration
+fullnameOverride: sealed-secrets-controller
+
+# Resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Metrics for Prometheus
+metrics:
+  serviceMonitor:
+    enabled: true
+    labels:
+      app.kubernetes.io/part-of: platformforge

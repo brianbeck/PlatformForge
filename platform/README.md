@@ -24,6 +24,8 @@ Each service follows the same pattern:
 | `gatekeeper/` | OPA Gatekeeper | Kubernetes admission policy enforcement |
 | `falco/` | Falco | Runtime security monitoring via eBPF |
 | `trivy-operator/` | Trivy Operator | Continuous vulnerability scanning of running workloads |
+| `sealed-secrets/` | Sealed Secrets | Encrypt secrets in Git (default) |
+| `external-secrets/` | External Secrets Operator | Sync secrets from external stores (optional) |
 
 ## How values are applied
 

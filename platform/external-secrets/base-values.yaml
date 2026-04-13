@@ -1,0 +1,36 @@
+# External Secrets Operator base Helm values
+# Syncs secrets from external stores (Vault, AWS SSM, 1Password, etc.)
+# into Kubernetes Secrets.
+
+installCRDs: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+serviceMonitor:
+  enabled: true
+  labels:
+    app.kubernetes.io/part-of: platformforge
+
+webhook:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+certController:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

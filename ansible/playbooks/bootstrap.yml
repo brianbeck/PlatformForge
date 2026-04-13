@@ -91,6 +91,7 @@
     - discover_environment
     - discover_contexts
     - discover_ingress
+    - discover_secrets
 
   post_tasks:
     - name: Bootstrap complete

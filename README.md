@@ -88,7 +88,7 @@ cd PlatformForge/ansible
 ansible-playbook playbooks/bootstrap.yml
 ```
 
-Prompts for: Git repo URL, environment model (A/B), kubectl contexts, Traefik ingress, hostnames, Pi-hole DNS. All answers saved and reused on re-runs.
+Prompts for: Git repo URL, environment model (A/B), kubectl contexts, Traefik ingress, hostnames, Pi-hole DNS, secrets management (Sealed Secrets or External Secrets Operator). All answers saved and reused on re-runs.
 
 ### 2. Deploy
 
@@ -132,6 +132,7 @@ Argo CD deploys services in wave order:
 
 | Wave | Service | Why |
 |---|---|---|
+| -10 | Sealed Secrets or ESO | Secrets available before other services |
 | 10 | Traefik | Ingress needed for external access |
 | 20 | kube-prometheus-stack | CRDs needed by ServiceMonitors |
 | 30 | Gatekeeper controller | Must run before templates |
@@ -161,6 +162,13 @@ Argo CD deploys services in wave order:
 - Modern eBPF driver (kernel 5.8+)
 - Custom rules: shell in container, sensitive file reads, privilege escalation, crypto mining, unexpected connections
 - NetworkPolicies, PrometheusRules for alerting
+
+### Sealed Secrets (default) / External Secrets Operator
+
+Manages Kubernetes Secrets securely. Choose during bootstrap:
+
+- **Sealed Secrets (default):** Encrypt secrets in Git using `kubeseal`. No external infrastructure needed. Each cluster has its own encryption key.
+- **External Secrets Operator:** Sync secrets from HashiCorp Vault or cloud providers. Requires an external secret store.
 
 ### Trivy Operator (Vulnerability Scanning)
 - Continuously scans running workloads for CVEs
@@ -228,4 +236,6 @@ kubectl get servicemonitor -A
 | OPA Gatekeeper | 3.22.0 | v3.22.0 |
 | Falco | 8.0.1 | 0.43.0 |
 | Trivy Operator | 0.32.1 | 0.30.1 |
+| Sealed Secrets | 2.18.5 | 0.36.6 |
+| External Secrets (optional) | 2.3.0 | v2.3.0 |
 | Argo CD | 9.4.17 | v3.3.6 |

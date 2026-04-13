@@ -1,0 +1,73 @@
+---
+# Discover secrets management preference.
+
+- name: Prompt for secrets management strategy
+  ansible.builtin.pause:
+    prompt: |
+
+      Secrets Management
+      ==================
+
+      How should platform secrets be managed?
+
+        1. Sealed Secrets (default)
+           Secrets encrypted in Git. No external infrastructure needed.
+
+        2. External Secrets Operator
+           Secrets synced from HashiCorp Vault or other external store.
+           Requires a running Vault instance.
+
+      {% if saved.secrets_strategy | default('') | length > 0 %}
+      Previously selected: {{ saved.secrets_strategy }}
+      Press Enter to keep.
+      {% endif %}
+
+      Enter 1 or 2 [1]
+  register: secrets_input
+
+- name: Set secrets strategy
+  ansible.builtin.set_fact:
+    secrets_strategy: >-
+      {{ 'external-secrets' if (secrets_input.user_input | trim) == '2'
+         else (saved.secrets_strategy | default('sealed-secrets')
+               if secrets_input.user_input | trim | length == 0
+               else 'sealed-secrets') }}
+
+- name: Display secrets strategy
+  ansible.builtin.debug:
+    msg: "Secrets management: {{ secrets_strategy }}"
+
+- name: Prompt for Vault address (External Secrets only)
+  when: secrets_strategy == 'external-secrets'
+  ansible.builtin.pause:
+    prompt: |
+
+      External Secrets Operator requires a Vault address.
+      You can configure this later if Vault is not yet running.
+      {% if saved.vault_address | default('') | length > 0 %}
+
+      Current: {{ saved.vault_address }}
+      Press Enter to keep.
+      {% endif %}
+
+      Vault address (e.g., https://vault.example.com) [skip]
+  register: vault_input
+
+- name: Set vault address
+  when: secrets_strategy == 'external-secrets'
+  ansible.builtin.set_fact:
+    vault_address: "{{ vault_input.user_input | trim | default(saved.vault_address | default(''), true) }}"
+
+- name: Set empty vault address for sealed-secrets
+  when: secrets_strategy == 'sealed-secrets'
+  ansible.builtin.set_fact:
+    vault_address: ""
+
+# Save to environments.yml
+- name: Append secrets configuration to environments file
+  ansible.builtin.blockinfile:
+    path: "{{ playbook_dir }}/../../environments.yml"
+    marker: "# {mark} SECRETS CONFIGURATION"
+    block: |
+      secrets_strategy: "{{ secrets_strategy }}"
+      vault_address: "{{ vault_address | default('') }}"

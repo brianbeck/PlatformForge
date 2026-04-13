@@ -13,6 +13,7 @@ PlatformForge is a GitOps platform services management system for Kubernetes. An
 ## Deployment Order (Sync Waves)
 
 ```
+Wave -10  Sealed Secrets or External Secrets Operator
 Wave 10   Traefik (ingress controller)
 Wave 20   kube-prometheus-stack (monitoring CRDs + stack)
 Wave 30   Gatekeeper controller
@@ -39,6 +40,8 @@ Wave 70   Trivy Operator (vulnerability scanning)
 | OPA Gatekeeper | gatekeeper/gatekeeper | 3.22.0 | gatekeeper-system |
 | Falco | falcosecurity/falco | 8.0.1 | falco / falco-{stage,prod} |
 | Trivy Operator | aquasecurity/trivy-operator | 0.32.1 | trivy-system |
+| Sealed Secrets | sealed-secrets/sealed-secrets | 2.18.5 | sealed-secrets |
+| External Secrets (optional) | external-secrets/external-secrets | 2.3.0 | external-secrets |
 | Argo CD | argo/argo-cd | 9.4.17 | argocd |
 
 ## Environment Models
