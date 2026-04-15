@@ -14,9 +14,8 @@ controller:
   # See: https://argoproj.github.io/argo-rollouts/features/traffic-management/traefik/
   # Plugin repo: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-traefik
   trafficRouterPlugins:
-    trafficRouterPlugins: |-
-      - name: "argoproj-labs/traefik"
-        location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-traefik/releases/download/v0.2.0/traefik-plugin-linux-amd64"
+    - name: "argoproj-labs/traefik"
+      location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-traefik/releases/download/v0.2.0/traefik-plugin-linux-amd64"
 
   metrics:
     enabled: true
