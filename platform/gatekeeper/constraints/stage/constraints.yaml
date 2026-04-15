@@ -32,6 +32,7 @@ spec:
       - metallb-system
       - local-path-storage
       - cert-manager
+      - argo-rollouts
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sRequiredLabels
@@ -60,6 +61,7 @@ spec:
       - metallb-system
       - local-path-storage
       - cert-manager
+      - argo-rollouts
   parameters:
     labels:
       - key: "app.kubernetes.io/managed-by"
@@ -92,6 +94,7 @@ spec:
       - metallb-system
       - local-path-storage
       - cert-manager
+      - argo-rollouts
   parameters:
     requireCPU: true
     requireMemory: true
@@ -123,6 +126,7 @@ spec:
       - metallb-system
       - local-path-storage
       - cert-manager
+      - argo-rollouts
   parameters:
     exemptImages: []
 ---
@@ -153,6 +157,7 @@ spec:
       - metallb-system
       - local-path-storage
       - cert-manager
+      - argo-rollouts
   parameters:
     allowHostNetwork: false
     allowHostPID: false
@@ -185,3 +190,4 @@ spec:
       - metallb-system
       - local-path-storage
       - cert-manager
+      - argo-rollouts

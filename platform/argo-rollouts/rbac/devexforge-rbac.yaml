@@ -1,0 +1,73 @@
+# RBAC granting DevExForge permission to manage Argo Rollouts resources
+# in any namespace cluster-wide. Required because team namespaces are
+# created dynamically by DevExForge's reconciliation loop, so a
+# per-namespace RoleBinding can't be pre-provisioned.
+#
+# Bound to system:serviceaccount:engineering-platform:devexforge-api in
+# the prod cluster (where DevExForge's API runs). The operator SA can be
+# added later if Phase 3 has the operator create Rollout CRs directly.
+#
+# Deployed by the argo-rollouts-rbac ApplicationSet (sync wave 80).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platformforge:rollouts-editor
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    app.kubernetes.io/component: argo-rollouts
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - rollouts
+      - rollouts/status
+      - rollouts/scale
+      - analysistemplates
+      - clusteranalysistemplates
+      - analysisruns
+      - experiments
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platformforge:rollouts-editor:devexforge-api
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    app.kubernetes.io/component: argo-rollouts
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: platformforge:rollouts-editor
+subjects:
+  - kind: ServiceAccount
+    name: devexforge-api
+    namespace: engineering-platform
+---
+# Cluster admin role for human platform operators. Bind to a group via
+# your auth provider (OIDC, etc.) — left unbound by default so this
+# manifest is safe to apply on a cluster without the group existing.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platformforge:rollouts-admin
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    app.kubernetes.io/component: argo-rollouts
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - rollouts
+      - rollouts/status
+      - rollouts/scale
+      - analysistemplates
+      - clusteranalysistemplates
+      - analysisruns
+      - experiments
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments"]
+    verbs: ["get", "list", "watch"]

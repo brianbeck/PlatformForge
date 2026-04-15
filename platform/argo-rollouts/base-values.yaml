@@ -1,0 +1,58 @@
+# Argo Rollouts base Helm values
+# Provides progressive delivery (blue-green, canary) for application
+# Deployments. Consumed by DevExForge, which creates Rollout CRs in
+# team namespaces.
+
+# Install CRDs and keep them on uninstall (Argo CD owns lifecycle).
+installCRDs: true
+keepCRDs: true
+
+controller:
+  replicas: 1
+
+  # Load the Traefik traffic-router plugin at controller startup.
+  # See: https://argoproj.github.io/argo-rollouts/features/traffic-management/traefik/
+  # Plugin repo: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-traefik
+  trafficRouterPlugins:
+    trafficRouterPlugins: |-
+      - name: "argoproj-labs/traefik"
+        location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-traefik/releases/download/v0.2.0/traefik-plugin-linux-amd64"
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        app.kubernetes.io/part-of: platformforge
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Web dashboard. Exposed via Traefik IngressRoute (see platform/argo-rollouts/overlays/<env>/ingressroute.yaml).
+# Auth is intentionally disabled — dashboard sits behind internal Pi-hole DNS,
+# not the public internet.
+dashboard:
+  enabled: true
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 3100
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ServiceAccount used by the controller. RBAC for managing Traefik
+# IngressRoutes is granted by platform/argo-rollouts/rbac/traefik-rbac.yaml
+# (deployed by the sibling ApplicationSet).
+serviceAccount:
+  create: true
+  name: argo-rollouts

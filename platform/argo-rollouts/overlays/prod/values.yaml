@@ -1,0 +1,14 @@
+# Argo Rollouts prod overlay
+# HA controller (leader election) for resilience during traffic shifts.
+controller:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+dashboard:
+  replicas: 2
