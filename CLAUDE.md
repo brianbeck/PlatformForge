@@ -21,7 +21,36 @@ Wave 40   Gatekeeper ConstraintTemplates (creates CRDs)
 Wave 50   Gatekeeper Constraints (uses CRDs from wave 40)
 Wave 60   Falco (runtime security)
 Wave 70   Trivy Operator (vulnerability scanning)
+Wave 80   Argo Rollouts (progressive delivery)
 ```
+
+### Argo Rollouts: Traffic Routing Status
+
+Currently deployed **without a traffic-router plugin**. Supported strategies:
+- `blueGreen` — service-selector swap (no weighting). Fully functional.
+- `canary` — replica-based, relies on Service round-robin. No precise traffic split.
+
+**TODO (Phase 2):** Add real weighted traffic shifting. The historical
+`argoproj-labs/traefik` plugin was never released, and the official Argo
+Rollouts docs now route Traefik users through the Gateway API plugin
+(`argoproj-labs/gatewayAPI`,
+`https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi`).
+This requires:
+
+1. Migrating Traefik from `IngressRoute` CRDs to Kubernetes Gateway API
+   resources (`Gateway`, `HTTPRoute`). Traefik 3.x ships a Gateway API
+   provider that needs to be enabled in `platform/traefik/base-values.yaml`.
+2. Rewriting all PlatformForge IngressRoutes (Argo CD, Grafana,
+   Prometheus, Argo Rollouts dashboard) as `HTTPRoute` resources, or
+   running both providers side-by-side during transition.
+3. Adding the Gateway API plugin to `platform/argo-rollouts/base-values.yaml`
+   under `controller.trafficRouterPlugins` (the value is a list — see
+   commit history for the correct structure).
+4. Updating `platform/argo-rollouts/rbac/` with a ClusterRole granting
+   the controller patch access to `gateway.networking.k8s.io/httproutes`.
+
+Estimated scope: 1-2 days of work, touches Traefik values and every
+existing IngressRoute in the repo.
 
 ## Key Directories
 
@@ -43,6 +72,7 @@ Wave 70   Trivy Operator (vulnerability scanning)
 | Sealed Secrets | sealed-secrets/sealed-secrets | 2.18.5 | sealed-secrets |
 | External Secrets (optional) | external-secrets/external-secrets | 2.3.0 | external-secrets |
 | Argo CD | argo/argo-cd | 9.4.17 | argocd |
+| Argo Rollouts | argo/argo-rollouts | 2.40.9 | argo-rollouts |
 
 ## Environment Models
 
