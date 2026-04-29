@@ -1,3 +1,9 @@
+# Python packaging
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
 # Ansible
 *.retry
 .vault_pass

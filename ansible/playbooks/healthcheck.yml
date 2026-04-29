@@ -259,6 +259,16 @@
           register: stage_prometheus_url
           failed_when: false
 
+        - name: "STAGE: Check Argo Rollouts dashboard URL"
+          when: rollouts_hostname_stage | default('') | length > 0
+          ansible.builtin.uri:
+            url: "https://{{ rollouts_hostname_stage }}"
+            validate_certs: false
+            timeout: 10
+            status_code: [200, 302, 303]
+          register: stage_rollouts_url
+          failed_when: false
+
         - name: "STAGE: Ingress Endpoints"
           ansible.builtin.debug:
             msg: |
@@ -268,6 +278,9 @@
               {% endif %}
               {% if prometheus_hostname_stage | default('') | length > 0 %}
               {{ 'PASS' if stage_prometheus_url.status | default(0) in [200, 302, 303] else 'FAIL' }} Prometheus:  https://{{ prometheus_hostname_stage }} ({{ stage_prometheus_url.status | default('unreachable') }})
+              {% endif %}
+              {% if rollouts_hostname_stage | default('') | length > 0 %}
+              {{ 'PASS' if stage_rollouts_url.status | default(0) in [200, 302, 303] else 'FAIL' }} Rollouts:    https://{{ rollouts_hostname_stage }} ({{ stage_rollouts_url.status | default('unreachable') }})
               {% endif %}
 
     # ===========================================================
@@ -417,6 +430,16 @@
           register: prod_prometheus_url
           failed_when: false
 
+        - name: "PROD: Check Argo Rollouts dashboard URL"
+          when: rollouts_hostname_prod | default('') | length > 0
+          ansible.builtin.uri:
+            url: "https://{{ rollouts_hostname_prod }}"
+            validate_certs: false
+            timeout: 10
+            status_code: [200, 302, 303]
+          register: prod_rollouts_url
+          failed_when: false
+
         - name: "PROD: Ingress Endpoints"
           ansible.builtin.debug:
             msg: |
@@ -426,6 +449,9 @@
               {% endif %}
               {% if prometheus_hostname_prod | default('') | length > 0 %}
               {{ 'PASS' if prod_prometheus_url.status | default(0) in [200, 302, 303] else 'FAIL' }} Prometheus:  https://{{ prometheus_hostname_prod }} ({{ prod_prometheus_url.status | default('unreachable') }})
+              {% endif %}
+              {% if rollouts_hostname_prod | default('') | length > 0 %}
+              {{ 'PASS' if prod_rollouts_url.status | default(0) in [200, 302, 303] else 'FAIL' }} Rollouts:    https://{{ rollouts_hostname_prod }} ({{ prod_rollouts_url.status | default('unreachable') }})
               {% endif %}
 
   post_tasks:

@@ -81,19 +81,28 @@ PlatformForge/
 
 ## Quick Start
 
+### Prerequisites
+
+Python 3.9+ required. Install the CLI:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .                    # or: pip install -e ".[dev]" for tests
+```
+
 ### 1. Configure
 
 ```bash
-cd PlatformForge/ansible
-ansible-playbook playbooks/bootstrap.yml
+platformforge init
 ```
 
-Prompts for: Git repo URL, environment model (A/B), kubectl contexts, Traefik ingress, hostnames, Pi-hole DNS, secrets management (Sealed Secrets or External Secrets Operator). All answers saved and reused on re-runs.
+Interactive wizard prompts for: Git repo URL, environment model (A/B), kubectl contexts, Traefik ingress, hostnames, Pi-hole DNS, secrets management (Sealed Secrets or External Secrets Operator). All answers saved and reused on re-runs.
 
 ### 2. Deploy
 
 ```bash
-ansible-playbook playbooks/install-argocd.yml
+platformforge deploy
 ```
 
 This installs Argo CD, generates ApplicationSets, and applies them. Argo CD then deploys all platform services in sync-wave order.
@@ -101,15 +110,13 @@ This installs Argo CD, generates ApplicationSets, and applies them. Argo CD then
 ### 3. Commit
 
 ```bash
-cd ..
 git add argocd/ && git commit -m "Generate ApplicationSets" && git push
 ```
 
 ### 4. Verify
 
 ```bash
-cd ansible
-ansible-playbook playbooks/healthcheck.yml
+platformforge status
 ```
 
 Or access UIs (if ingress enabled):
@@ -206,21 +213,24 @@ Manages Kubernetes Secrets securely. Choose during bootstrap:
 | 3 | Trivy Operator | Continuous | **Implemented** |
 | 4 | Gatekeeper + External Data | Admission | **Planned** |
 
-## Playbook Reference
+## CLI Reference
 
-| Playbook | Purpose |
+| Command | Purpose |
 |---|---|
-| `bootstrap.yml` | Interactive config (first time) |
-| `install-argocd.yml` | Install Argo CD, deploy platform via ApplicationSets |
-| `deploy-dns.yml` | Re-register Pi-hole DNS records |
-| `healthcheck.yml` | Verify all services across clusters |
-| `teardown.yml` | Clean removal of everything |
+| `platformforge init` | Interactive bootstrap wizard (replaces `bootstrap.yml`) |
+| `platformforge deploy` | Install Argo CD, deploy platform via ApplicationSets |
+| `platformforge status` | Verify all services across clusters |
+| `platformforge teardown` | Clean removal of everything (`--yes` to skip prompt) |
+| `platformforge dns` | Re-register Pi-hole DNS records |
+| `platformforge config show` | Display current configuration |
+| `platformforge config set KEY VALUE` | Modify a single config value |
+
+Ansible playbooks are still available under `ansible/playbooks/` for direct use.
 
 ## Teardown
 
 ```bash
-cd ansible
-ansible-playbook playbooks/teardown.yml
+platformforge teardown
 ```
 
 Deletes ApplicationSets -> Applications -> Argo CD -> webhooks -> namespaces.

@@ -121,13 +121,102 @@ Reference: https://open-policy-agent.github.io/gatekeeper/website/docs/externald
 - **Argo CD shows Unknown sync:** Push generated ApplicationSets to Git
 - **kube-prometheus-stack webhook caBundle drift:** Handled by `ignoreDifferences` in ApplicationSet
 
-## Playbook Reference
+## CLI Reference
 
 ```bash
-cd ansible
-ansible-playbook playbooks/bootstrap.yml        # Configure (interactive)
-ansible-playbook playbooks/install-argocd.yml    # Install Argo CD + deploy platform
-ansible-playbook playbooks/healthcheck.yml       # Verify all services
-ansible-playbook playbooks/teardown.yml          # Clean removal
-ansible-playbook playbooks/deploy-dns.yml        # Re-register Pi-hole DNS
+pip install -e .                         # Install CLI (editable)
+platformforge init                       # Interactive bootstrap wizard
+platformforge deploy                     # Install Argo CD + deploy platform
+platformforge status                     # Verify all services
+platformforge teardown                   # Clean removal (--yes to skip prompt)
+platformforge dns                        # Re-register Pi-hole DNS
+platformforge config show                # Display current config
+platformforge config set KEY VALUE       # Modify a single config value
 ```
+
+The CLI writes `environments.yml` and `ansible/vault/secrets.yml`; Ansible playbooks
+read them.  Ansible playbooks remain functional for direct use under `ansible/playbooks/`.
+
+Source: `src/platformforge/` (Click + Rich + Pydantic).  Install with `pip install -e ".[dev]"` for tests.
+
+## Production Readiness Roadmap
+
+### High Priority
+
+**1. CI pipeline for PlatformForge itself**
+No `.github/workflows/` or equivalent exists. A bad push to `platform/` goes straight to Argo CD auto-sync on stage. A basic pipeline should include:
+- YAML lint + `helm template --dry-run` for every service
+- `kubeconform` to validate rendered manifests against K8s schemas
+- `conftest` to run OPA policies against PlatformForge's own manifests
+- `gator test` to validate Gatekeeper ConstraintTemplates against sample resources
+
+**2. Argo CD notifications**
+ApplicationSets have `notifications.argoproj.io/subscribe.on-health-degraded` and `on-sync-failed` annotations, but no notification service is configured. These annotations are inert. Wire to Slack, email, or webhook so sync failures and health degradation are visible without watching dashboards.
+
+**3. Alertmanager routing**
+kube-prometheus-stack is deployed with PrometheusRules for Falco and Trivy, but no Alertmanager receiver is configured (Slack, PagerDuty, email). Alerts fire into the void. Configure receivers in `platform/observability/overlays/prod/values.yaml` at minimum.
+
+**4. Grafana dashboards-as-code**
+Grafana is deployed but no dashboards are provisioned via ConfigMap or sidecar. Each redeploy starts fresh. Provision at minimum:
+- Argo CD dashboard (community JSON available)
+- Falco events dashboard
+- Trivy vulnerability summary
+- Cluster overview (verify `defaultDashboardsEnabled: true` in kube-prometheus-stack values)
+
+### Medium Priority
+
+**5. Backup/restore for Argo CD**
+If the Argo CD namespace is deleted, all Application state, RBAC, repo credentials are lost. Options: `argocd admin export` via CronJob to PV or S3. Since ApplicationSets are in Git, the main risk is custom RBAC and repo configs — at minimum document the manual restore path.
+
+**6. Pod Disruption Budgets**
+Prod overlays set 2 replicas for Traefik, observability, and argo-rollouts but no PDBs. A node drain can take both replicas simultaneously. Add PDBs for:
+- Traefik (`maxUnavailable: 1`)
+- Argo CD server + controller
+- Argo Rollouts controller (prod)
+
+**7. Resource quotas / LimitRange for team namespaces**
+DevExForge creates team namespaces dynamically. Without ResourceQuotas, a single team can starve the cluster. PlatformForge could provide a default LimitRange via Gatekeeper or a shared Helm chart that DevExForge applies on namespace creation.
+
+**8. Log aggregation**
+Metrics (Prometheus) and runtime detection (Falco) exist, but no centralized logging. Options:
+- Loki + Promtail (lightweight, fits the Grafana ecosystem already deployed)
+- Document that ClusterForge clusters ship logs to an external system
+Without this, debugging a crash-looping pod means `kubectl logs` on the right node at the right time.
+
+**9. Sealed Secrets key rotation**
+Sealed Secrets controller generates an encryption key on first install. If the controller is reinstalled, existing SealedSecrets become undecryptable. Add a CronJob or documented procedure to:
+- Back up the encryption key
+- Rotate periodically
+
+### Lower Priority
+
+**10. Network policies for all services**
+Network policies exist for Falco and Gatekeeper, but not for: Traefik, observability stack, cert-manager, sealed-secrets, argo-rollouts, Argo CD. A "default-deny + explicit allow" model for every platform namespace would harden the blast radius of a compromised pod.
+
+**11. Automated testing for Gatekeeper policies**
+Six ConstraintTemplates exist but no `gator test` suite validates them against sample resources. A passing constraint test could silently break after a Gatekeeper upgrade.
+
+**12. Image pinning / signature verification**
+All Helm charts reference upstream container images by tag, not digest. A supply chain attack on a chart's image tag would propagate through Argo CD auto-sync. Consider:
+- Cosign signature verification (if available for upstream images)
+- Digest pinning for prod overlays
+
+**13. Runbooks**
+README troubleshooting section covers 4 scenarios. Production runbooks should cover: certificate expiry, sealed-secrets key loss, Argo CD admin password reset, node failure impact, and the full disaster recovery procedure (rebuild from scratch using only Git + vault password).
+
+### Existing TODOs (from README.md)
+
+**Argo Rollouts weighted traffic shifting (Phase 2)**
+Migrate Traefik from IngressRoute CRDs to Gateway API and load the `argoproj-labs/gatewayAPI` plugin ([repo](https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi)) to enable real weighted traffic shifting. Migration steps:
+1. Enable Traefik's Gateway API provider in `platform/traefik/base-values.yaml`
+2. Convert all IngressRoutes (Argo CD, Grafana, Prometheus, Argo Rollouts dashboard) to `Gateway` + `HTTPRoute` resources
+3. Add the plugin to `platform/argo-rollouts/base-values.yaml` under `controller.trafficRouterPlugins`
+4. Add a ClusterRole in `platform/argo-rollouts/rbac/` granting the controller access to `gateway.networking.k8s.io/httproutes`
+Scope: ~1-2 days, touches Traefik values and every existing IngressRoute.
+
+**Security Layer 4: Gatekeeper + External Data Provider**
+Gatekeeper querying Trivy Operator vulnerability data at admission time. Required components:
+- Gatekeeper External Data Provider CRD pointing to Trivy Operator
+- ConstraintTemplate querying vulnerability data via the provider
+- Constraints with configurable CVE thresholds
+Reference: https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata

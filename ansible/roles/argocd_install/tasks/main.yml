@@ -187,7 +187,8 @@
         {"src": "40-gatekeeper-templates.yml.j2", "dest": "40-policy-templates/gatekeeper-templates.yml"},
         {"src": "50-gatekeeper-constraints.yml.j2", "dest": "50-policy-constraints/gatekeeper-constraints.yml"},
         {"src": "60-falco.yml.j2", "dest": "60-runtime-security/falco.yml"},
-        {"src": "70-trivy-operator.yml.j2", "dest": "70-vulnerability-scanning/trivy-operator.yml"}
+        {"src": "70-trivy-operator.yml.j2", "dest": "70-vulnerability-scanning/trivy-operator.yml"},
+        {"src": "80-argo-rollouts.yml.j2", "dest": "80-progressive-delivery/argo-rollouts.yml"}
       ] }}
 
 - name: Template AppProjects to argocd/root/
@@ -198,6 +199,13 @@
   loop:
     - { src: "project-stage.yml.j2", dest: "platform-project-stage.yml" }
     - { src: "project-prod.yml.j2", dest: "platform-project-prod.yml" }
+
+- name: Ensure wave directories exist (stage + prod)
+  ansible.builtin.file:
+    path: "{{ item.0 }}/{{ item.1.dest | dirname }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ [playbook_dir + '/../../argocd/waves-stage', playbook_dir + '/../../argocd/waves-prod'] | product(appset_waves) | list }}"
 
 - name: Template stage ApplicationSets to argocd/waves-stage/
   ansible.builtin.template:
@@ -340,13 +348,12 @@
       no_log: true
 
     - name: Seal secret for stage
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: >-
           kubeseal --controller-name=sealed-secrets-controller
           --controller-namespace=sealed-secrets
           --context {{ stage_context }}
-          --format yaml
-      stdin: "{{ lookup('file', '/tmp/cf-secret-plain.yaml') }}"
+          --format yaml < /tmp/cf-secret-plain.yaml
       register: sealed_stage
       changed_when: false
       no_log: true
@@ -384,13 +391,12 @@
       failed_when: ns_result.rc != 0 and 'already exists' not in ns_result.stderr
 
     - name: Seal secret for prod
-      ansible.builtin.command:
+      ansible.builtin.shell:
         cmd: >-
           kubeseal --controller-name=sealed-secrets-controller
           --controller-namespace=sealed-secrets
           --context {{ prod_context }}
-          --format yaml
-      stdin: "{{ lookup('file', '/tmp/cf-secret-plain.yaml') }}"
+          --format yaml < /tmp/cf-secret-plain.yaml
       register: sealed_prod
       changed_when: false
       no_log: true
@@ -512,11 +518,39 @@
     prometheus_hostname: "{{ prometheus_hostname_prod }}"
     env_name: prod
 
+- name: Ensure Argo Rollouts overlay directories exist
+  when: ingress_enabled | default(false) | bool
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/{{ item }}/manifests"
+    state: directory
+    mode: "0755"
+  loop:
+    - stage
+    - prod
+
+- name: Template Argo Rollouts dashboard IngressRoute (stage)
+  when: ingress_enabled | default(false) | bool and rollouts_hostname_stage | default('') | length > 0
+  ansible.builtin.template:
+    src: argo-rollouts/ingressroute.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/stage/manifests/ingressroute.yaml"
+    mode: "0644"
+  vars:
+    rollouts_hostname: "{{ rollouts_hostname_stage }}"
+
+- name: Template Argo Rollouts dashboard IngressRoute (prod)
+  when: ingress_enabled | default(false) | bool and rollouts_hostname_prod | default('') | length > 0
+  ansible.builtin.template:
+    src: argo-rollouts/ingressroute.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/prod/manifests/ingressroute.yaml"
+    mode: "0644"
+  vars:
+    rollouts_hostname: "{{ rollouts_hostname_prod }}"
+
 - name: Display deployment progress
   ansible.builtin.debug:
     msg: |
       Argo CD is now deploying all platform services via ApplicationSets.
-      Sync wave order: Secrets(-10) -> Traefik(10) -> Observability(20) -> Gatekeeper(30-50) -> Falco(60) -> Trivy(70)
+      Sync wave order: Secrets(-10) -> Traefik(10) -> Observability(20) -> Gatekeeper(30-50) -> Falco(60) -> Trivy(70) -> Argo Rollouts(80)
 
       Monitor progress:
         kubectl --context {{ stage_context }} -n argocd get applications -w

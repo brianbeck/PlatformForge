@@ -27,10 +27,16 @@
       loop:
         - kubectl
         - helm
-        - kubeseal
       changed_when: false
-      failed_when: result.rc != 0
-      register: result
+      register: tool_check
+      failed_when: tool_check.rc != 0
+
+    - name: Verify kubeseal is installed
+      ansible.builtin.command:
+        cmd: which kubeseal
+      changed_when: false
+      register: kubeseal_check
+      failed_when: kubeseal_check.rc != 0
 
   roles:
     - argocd_install

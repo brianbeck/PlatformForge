@@ -29,6 +29,7 @@
         fail_msg: "environments.yml not found. Run bootstrap first."
 
     - name: Display teardown warning
+      when: confirm_teardown_cli is not defined
       ansible.builtin.pause:
         prompt: |
 
@@ -54,6 +55,7 @@
       register: confirm_teardown
 
     - name: Abort if not confirmed
+      when: confirm_teardown_cli is not defined
       ansible.builtin.assert:
         that:
           - confirm_teardown.user_input == 'yes'
@@ -128,6 +130,7 @@
         - sealed-secrets
         - external-secrets
         - cert-manager
+        - argo-rollouts
       changed_when: false
       failed_when: false
 
@@ -154,6 +157,7 @@
         - sealed-secrets
         - external-secrets
         - cert-manager
+        - argo-rollouts
       changed_when: false
       failed_when: false
 
@@ -240,6 +244,7 @@
         - sealed-secrets
         - external-secrets
         - cert-manager
+        - argo-rollouts
       changed_when: false
       failed_when: false
 
@@ -266,6 +271,7 @@
         - sealed-secrets
         - external-secrets
         - cert-manager
+        - argo-rollouts
       changed_when: false
       failed_when: false
 

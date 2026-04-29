@@ -26,15 +26,17 @@ Each service follows the same pattern:
 | `trivy-operator/` | Trivy Operator | Continuous vulnerability scanning of running workloads |
 | `sealed-secrets/` | Sealed Secrets | Encrypt secrets in Git (default) |
 | `external-secrets/` | External Secrets Operator | Sync secrets from external stores (optional) |
+| `cert-manager/` | cert-manager | TLS certificate management with Let's Encrypt |
+| `argo-rollouts/` | Argo Rollouts | Progressive delivery (blue-green, canary) |
 
 ## How values are applied
 
-During initial deployment, Ansible runs `helm upgrade --install` with:
+When `platformforge deploy` is run, the CLI invokes Ansible, which installs Argo CD and generates ApplicationSets. Each ApplicationSet uses Argo CD's multi-source feature to reference:
 ```
 --values base-values.yaml --values overlays/<env>/values.yaml
 ```
 
-After deployment, Argo CD Applications reference the same files via multi-source, keeping Git as the source of truth.
+Argo CD owns the Helm release lifecycle — Ansible never runs `helm install` for platform services. Git is the source of truth.
 
 ## Making changes
 
