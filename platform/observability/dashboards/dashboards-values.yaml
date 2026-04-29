@@ -1,8 +1,21 @@
 # Grafana dashboards provisioned via Grafana.com dashboard IDs.
-# The Grafana sidecar downloads these at startup.
+# The init container downloads JSON at startup; the dashboardProviders
+# config tells Grafana to load them from the download directory.
 # To add a new dashboard, find its ID at https://grafana.com/grafana/dashboards/
 # and add an entry below.
 grafana:
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: PlatformForge
+          type: file
+          disableDeletion: false
+          options:
+            path: /var/lib/grafana/dashboards/default
+
   dashboards:
     default:
       argocd:
