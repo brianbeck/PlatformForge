@@ -68,3 +68,10 @@ providers:
     enabled: false
   kubernetesGateway:
     enabled: true
+
+# Disable the Helm chart's auto-created Gateway resource.
+# PlatformForge manages its own Gateway (applied by Ansible) with
+# cross-namespace routing (allowedRoutes.namespaces.from: All).
+# The chart's default uses from: Same which blocks cross-namespace HTTPRoutes.
+gateway:
+  enabled: false

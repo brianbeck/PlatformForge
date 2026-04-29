@@ -1,3 +1,21 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: traefik-default-tls
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: platformforge
+spec:
+  secretName: traefik-default-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - "*.{{ base_fqdn }}"
+---
+# Gateway resource for Traefik's Gateway API provider.
+# Ports must match Traefik's internal entrypoint ports (8000/8443),
+# NOT the externally exposed ports (80/443).
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -8,16 +26,18 @@ metadata:
 spec:
   gatewayClassName: traefik
   listeners:
-    - name: https
-      port: 443
+    - name: websecure
+      port: 8443
       protocol: HTTPS
       tls:
         mode: Terminate
+        certificateRefs:
+          - name: traefik-default-tls
       allowedRoutes:
         namespaces:
           from: All
-    - name: http
-      port: 80
+    - name: web
+      port: 8000
       protocol: HTTP
       allowedRoutes:
         namespaces:
