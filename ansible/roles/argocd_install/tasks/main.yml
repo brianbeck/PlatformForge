@@ -82,6 +82,15 @@
         project: platform-prod
 
 # ============================================================
+# ENVIRONMENT TARGETING
+# ============================================================
+
+- name: Set target environment flags
+  ansible.builtin.set_fact:
+    deploy_stage: "{{ target_env | default('all') in ['all', 'stage'] }}"
+    deploy_prod: "{{ target_env | default('all') in ['all', 'prod'] }}"
+
+# ============================================================
 # INSTALL ARGO CD
 # ============================================================
 
@@ -98,6 +107,7 @@
   changed_when: false
 
 - name: Template Argo CD Helm values (stage)
+  when: deploy_stage | bool
   ansible.builtin.template:
     src: values.yml.j2
     dest: /tmp/argocd-values-stage.yml
@@ -107,6 +117,7 @@
     argocd_server_insecure: true
 
 - name: Install Argo CD (stage)
+  when: deploy_stage | bool
   ansible.builtin.command:
     cmd: >-
       helm upgrade --install argocd argo/argo-cd
@@ -119,6 +130,7 @@
   changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
 
 - name: Wait for Argo CD server (stage)
+  when: deploy_stage | bool
   ansible.builtin.command:
     cmd: >-
       kubectl --context {{ stage_context }} -n {{ argocd_namespace }}
@@ -126,7 +138,7 @@
   changed_when: false
 
 - name: Template Argo CD Helm values (prod)
-  when: multi_cluster | bool
+  when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.template:
     src: values.yml.j2
     dest: /tmp/argocd-values-prod.yml
@@ -136,7 +148,7 @@
     argocd_server_insecure: true
 
 - name: Install Argo CD (prod)
-  when: multi_cluster | bool
+  when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.command:
     cmd: >-
       helm upgrade --install argocd argo/argo-cd
@@ -149,7 +161,7 @@
   changed_when: "'has been upgraded' in result.stdout or 'has been installed' in result.stdout"
 
 - name: Wait for Argo CD server (prod)
-  when: multi_cluster | bool
+  when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.command:
     cmd: >-
       kubectl --context {{ prod_context }} -n {{ argocd_namespace }}
@@ -201,6 +213,7 @@
     - { src: "project-prod.yml.j2", dest: "platform-project-prod.yml" }
 
 - name: Install Gateway API CRDs (stage)
+  when: deploy_stage | bool
   ansible.builtin.command:
     cmd: >-
       kubectl --context {{ stage_context }} apply -f
@@ -209,7 +222,7 @@
   changed_when: "'created' in gw_crd_stage.stdout or 'configured' in gw_crd_stage.stdout"
 
 - name: Install Gateway API CRDs (prod)
-  when: multi_cluster | bool
+  when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.command:
     cmd: >-
       kubectl --context {{ prod_context }} apply -f
@@ -251,26 +264,28 @@
 # ============================================================
 
 - name: Apply stage AppProjects
+  when: deploy_stage | bool
   ansible.builtin.command:
     cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
   register: result
   changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
 - name: Apply stage ApplicationSets
+  when: deploy_stage | bool
   ansible.builtin.shell:
     cmd: "find {{ playbook_dir }}/../../argocd/waves-stage/ -name '*.yml' -exec kubectl --context {{ stage_context }} apply -f {} \\;"
   register: result
   changed_when: true
 
 - name: Apply prod AppProjects
-  when: multi_cluster | bool
+  when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.command:
     cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
   register: result
   changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
 - name: Apply prod ApplicationSets
-  when: multi_cluster | bool
+  when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.shell:
     cmd: "find {{ playbook_dir }}/../../argocd/waves-prod/ -name '*.yml' -exec kubectl --context {{ prod_context }} apply -f {} \\;"
   register: result
@@ -289,7 +304,7 @@
 # ============================================================
 
 - name: Wait for cert-manager webhook to be ready (stage)
-  when: ingress_enabled | default(false) | bool
+  when: ingress_enabled | default(false) | bool and deploy_stage | bool
   ansible.builtin.shell:
     cmd: >-
       kubectl --context {{ stage_context }} -n cert-manager get pods
@@ -329,7 +344,7 @@
   no_log: true
 
 - name: Create and seal Cloudflare secret (stage)
-  when: ingress_enabled | default(false) | bool and cloudflare_api_token | length > 0
+  when: ingress_enabled | default(false) | bool and cloudflare_api_token | length > 0 and deploy_stage | bool
   block:
     - name: Wait for Sealed Secrets controller (stage)
       ansible.builtin.shell:
@@ -387,7 +402,7 @@
       changed_when: true
 
 - name: Create and seal Cloudflare secret (prod)
-  when: ingress_enabled | default(false) | bool and multi_cluster | bool and cloudflare_api_token | length > 0
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and cloudflare_api_token | length > 0 and deploy_prod | bool
   block:
     - name: Wait for Sealed Secrets controller (prod)
       ansible.builtin.shell:
@@ -435,7 +450,7 @@
     state: absent
 
 - name: Wait for Gateway API CRDs to be available (stage)
-  when: ingress_enabled | default(false) | bool
+  when: ingress_enabled | default(false) | bool and deploy_stage | bool
   ansible.builtin.command:
     cmd: "kubectl --context {{ stage_context }} get crd httproutes.gateway.networking.k8s.io"
   register: gw_crd_check
@@ -445,7 +460,7 @@
   until: gw_crd_check.rc == 0
 
 - name: Apply Traefik Gateway (stage)
-  when: ingress_enabled | default(false) | bool
+  when: ingress_enabled | default(false) | bool and deploy_stage | bool
   block:
     - name: Template stage Traefik Gateway
       ansible.builtin.template:
@@ -463,7 +478,7 @@
       until: gw_stage_result.rc == 0
 
 - name: Apply Argo CD HTTPRoute (stage)
-  when: ingress_enabled | default(false) | bool and argocd_hostname_stage | default('') | length > 0
+  when: ingress_enabled | default(false) | bool and argocd_hostname_stage | default('') | length > 0 and deploy_stage | bool
   block:
     - name: Template stage Argo CD HTTPRoute
       ansible.builtin.template:
@@ -483,7 +498,7 @@
       until: route_stage_result.rc == 0
 
 - name: Wait for Gateway API CRDs to be available (prod)
-  when: ingress_enabled | default(false) | bool and multi_cluster | bool
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and deploy_prod | bool
   ansible.builtin.command:
     cmd: "kubectl --context {{ prod_context }} get crd httproutes.gateway.networking.k8s.io"
   register: gw_crd_check_prod
@@ -493,7 +508,7 @@
   until: gw_crd_check_prod.rc == 0
 
 - name: Apply Traefik Gateway (prod)
-  when: ingress_enabled | default(false) | bool and multi_cluster | bool
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and deploy_prod | bool
   block:
     - name: Template prod Traefik Gateway
       ansible.builtin.template:
@@ -511,7 +526,7 @@
       until: gw_prod_result.rc == 0
 
 - name: Apply Argo CD HTTPRoute (prod)
-  when: ingress_enabled | default(false) | bool and multi_cluster | bool and argocd_hostname_prod | default('') | length > 0
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and argocd_hostname_prod | default('') | length > 0 and deploy_prod | bool
   block:
     - name: Template prod Argo CD HTTPRoute
       ansible.builtin.template:
@@ -550,7 +565,7 @@
     mode: "0644"
 
 - name: Template observability HTTPRoutes (stage)
-  when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0
+  when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0 and deploy_stage | bool
   ansible.builtin.template:
     src: observability/httproutes.yaml.j2
     dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/httproutes.yaml"
@@ -561,7 +576,7 @@
     env_name: stage
 
 - name: Template observability HTTPRoutes (prod)
-  when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
+  when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0 and deploy_prod | bool
   ansible.builtin.template:
     src: observability/httproutes.yaml.j2
     dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/httproutes.yaml"
@@ -582,7 +597,7 @@
     - prod
 
 - name: Template Argo Rollouts dashboard HTTPRoute (stage)
-  when: ingress_enabled | default(false) | bool and rollouts_hostname_stage | default('') | length > 0
+  when: ingress_enabled | default(false) | bool and rollouts_hostname_stage | default('') | length > 0 and deploy_stage | bool
   ansible.builtin.template:
     src: argo-rollouts/httproute.yaml.j2
     dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/stage/manifests/httproute.yaml"
@@ -592,7 +607,7 @@
     env_name: stage
 
 - name: Template Argo Rollouts dashboard HTTPRoute (prod)
-  when: ingress_enabled | default(false) | bool and rollouts_hostname_prod | default('') | length > 0
+  when: ingress_enabled | default(false) | bool and rollouts_hostname_prod | default('') | length > 0 and deploy_prod | bool
   ansible.builtin.template:
     src: argo-rollouts/httproute.yaml.j2
     dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/prod/manifests/httproute.yaml"
@@ -615,7 +630,7 @@
 # ============================================================
 
 - name: Wait for Traefik to get LoadBalancer IP (stage)
-  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool
+  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool and deploy_stage | bool
   ansible.builtin.shell:
     cmd: >-
       kubectl --context {{ stage_context }} -n traefik
@@ -628,7 +643,7 @@
   until: traefik_ip_stage_raw.stdout | trim | length > 0
 
 - name: Wait for Traefik to get LoadBalancer IP (prod)
-  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool and multi_cluster | bool
+  when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool and multi_cluster | bool and deploy_prod | bool
   ansible.builtin.shell:
     cmd: >-
       kubectl --context {{ prod_context }} -n traefik

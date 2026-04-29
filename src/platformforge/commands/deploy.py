@@ -10,8 +10,14 @@ from platformforge.ui.console import console
 
 
 @click.command("deploy")
-def deploy_cmd() -> None:
-    """Install Argo CD and deploy all platform services.
+@click.option(
+    "--env",
+    type=click.Choice(["stage", "prod", "all"], case_sensitive=False),
+    default="all",
+    help="Target environment (default: all).",
+)
+def deploy_cmd(env: str) -> None:
+    """Install Argo CD and deploy platform services.
 
     Runs ansible/playbooks/install-argocd.yml.
     """
@@ -23,9 +29,17 @@ def deploy_cmd() -> None:
         )
         raise SystemExit(1)
 
-    console.print("[bold]Deploying PlatformForge...[/bold]\n")
+    if env != "all" and not config.multi_cluster:
+        console.print(
+            f"[yellow]Model A (single cluster) — --env {env} ignored, deploying to both.[/yellow]"
+        )
+        env = "all"
+
+    label = f"[cyan]{env}[/cyan]" if env != "all" else "all environments"
+    console.print(f"[bold]Deploying PlatformForge ({label})...[/bold]\n")
     try:
-        rc = run_playbook("install-argocd.yml", project_root)
+        extra = {"target_env": env}
+        rc = run_playbook("install-argocd.yml", project_root, extra_vars=extra)
     except AnsibleError as exc:
         console.print(f"[red]{exc}[/red]")
         raise SystemExit(1)

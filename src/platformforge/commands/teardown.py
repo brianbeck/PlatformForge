@@ -12,8 +12,14 @@ from platformforge.wizard.prompts import ask
 
 @click.command("teardown")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
-def teardown_cmd(yes: bool) -> None:
-    """Remove all PlatformForge components from cluster(s).
+@click.option(
+    "--env",
+    type=click.Choice(["stage", "prod", "all"], case_sensitive=False),
+    default="all",
+    help="Target environment (default: all).",
+)
+def teardown_cmd(yes: bool, env: str) -> None:
+    """Remove PlatformForge components from cluster(s).
 
     Runs ansible/playbooks/teardown.yml.
     """
@@ -26,11 +32,12 @@ def teardown_cmd(yes: bool) -> None:
         raise SystemExit(1)
 
     console.print(
-        "[bold red]WARNING:[/bold red] This will remove ALL PlatformForge "
-        "components from your cluster(s).\n"
+        "[bold red]WARNING:[/bold red] This will remove PlatformForge "
+        f"components from [cyan]{env}[/cyan] cluster(s).\n"
     )
-    console.print(f"  Stage: [cyan]{config.stage_context}[/cyan]")
-    if config.multi_cluster:
+    if env in ("all", "stage"):
+        console.print(f"  Stage: [cyan]{config.stage_context}[/cyan]")
+    if env in ("all", "prod") and config.multi_cluster:
         console.print(f"  Prod:  [cyan]{config.prod_context}[/cyan]")
     console.print()
 
@@ -45,7 +52,10 @@ def teardown_cmd(yes: bool) -> None:
         rc = run_playbook(
             "teardown.yml",
             project_root,
-            extra_vars={"confirm_teardown_cli": "true"},
+            extra_vars={
+                "confirm_teardown_cli": "true",
+                "target_env": env,
+            },
         )
     except AnsibleError as exc:
         console.print(f"[red]{exc}[/red]")

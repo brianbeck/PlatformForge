@@ -10,7 +10,13 @@ from platformforge.ui.console import console
 
 
 @click.command("dns")
-def dns_cmd() -> None:
+@click.option(
+    "--env",
+    type=click.Choice(["stage", "prod", "all"], case_sensitive=False),
+    default="all",
+    help="Target environment (default: all).",
+)
+def dns_cmd(env: str) -> None:
     """Re-register service hostnames with Pi-hole DNS.
 
     Runs ansible/playbooks/deploy-dns.yml.
@@ -29,7 +35,8 @@ def dns_cmd() -> None:
 
     console.print("[bold]Registering DNS records...[/bold]\n")
     try:
-        rc = run_playbook("deploy-dns.yml", project_root)
+        extra = {"target_env": env}
+        rc = run_playbook("deploy-dns.yml", project_root, extra_vars=extra)
     except AnsibleError as exc:
         console.print(f"[red]{exc}[/red]")
         raise SystemExit(1)

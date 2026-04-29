@@ -10,8 +10,14 @@ from platformforge.ui.console import console
 
 
 @click.command("status")
-def status_cmd() -> None:
-    """Run health checks across all clusters.
+@click.option(
+    "--env",
+    type=click.Choice(["stage", "prod", "all"], case_sensitive=False),
+    default="all",
+    help="Target environment (default: all).",
+)
+def status_cmd(env: str) -> None:
+    """Run health checks across clusters.
 
     Runs ansible/playbooks/healthcheck.yml.
     """
@@ -25,7 +31,8 @@ def status_cmd() -> None:
 
     console.print("[bold]Running health checks...[/bold]\n")
     try:
-        rc = run_playbook("healthcheck.yml", project_root)
+        extra = {"target_env": env}
+        rc = run_playbook("healthcheck.yml", project_root, extra_vars=extra)
     except AnsibleError as exc:
         console.print(f"[red]{exc}[/red]")
         raise SystemExit(1)

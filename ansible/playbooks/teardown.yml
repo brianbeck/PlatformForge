@@ -62,25 +62,34 @@
         fail_msg: "Teardown aborted."
 
   tasks:
+    - name: Set target environment flags
+      ansible.builtin.set_fact:
+        teardown_stage: "{{ target_env | default('all') in ['all', 'stage'] }}"
+        teardown_prod: "{{ target_env | default('all') in ['all', 'prod'] }}"
+
     # ============================================================
     # STAGE CLUSTER
     # ============================================================
 
     - name: "STAGE: Delete all ApplicationSets"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: "kubectl --context {{ stage_context }} -n argocd delete applicationsets --all --wait=false 2>/dev/null; true"
       changed_when: false
 
     - name: "STAGE: Delete all Applications"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: "kubectl --context {{ stage_context }} -n argocd delete applications --all --wait=false 2>/dev/null; true"
       changed_when: false
 
     - name: "STAGE: Wait for Argo CD to clean up services"
+      when: teardown_stage | bool
       ansible.builtin.pause:
         seconds: 30
 
     - name: "STAGE: Remove Traefik cluster-scoped resources"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ stage_context }} delete clusterrole,clusterrolebinding
@@ -90,6 +99,7 @@
       changed_when: false
 
     - name: "STAGE: Remove Gatekeeper webhooks and CRDs"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ stage_context }} delete validatingwebhookconfiguration
@@ -101,6 +111,7 @@
       changed_when: false
 
     - name: "STAGE: Remove Observability webhooks and cluster resources"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ stage_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
@@ -111,11 +122,13 @@
       changed_when: false
 
     - name: "STAGE: Uninstall Argo CD"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: "helm --kube-context {{ stage_context }} uninstall argocd -n argocd --wait 2>/dev/null; true"
       changed_when: false
 
     - name: "STAGE: Delete all platform namespaces"
+      when: teardown_stage | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ stage_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
       loop:
@@ -135,10 +148,12 @@
       failed_when: false
 
     - name: "STAGE: Wait for namespace deletion"
+      when: teardown_stage | bool
       ansible.builtin.pause:
         seconds: 15
 
     - name: "STAGE: Force-remove stuck namespaces"
+      when: teardown_stage | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ stage_context }} get namespace {{ item }} -o json 2>/dev/null
@@ -166,24 +181,24 @@
     # ============================================================
 
     - name: "PROD: Delete all ApplicationSets"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.shell:
         cmd: "kubectl --context {{ prod_context }} -n argocd delete applicationsets --all --wait=false 2>/dev/null; true"
       changed_when: false
 
     - name: "PROD: Delete all Applications"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.shell:
         cmd: "kubectl --context {{ prod_context }} -n argocd delete applications --all --wait=false 2>/dev/null; true"
       changed_when: false
 
     - name: "PROD: Wait for Argo CD to clean up services"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.pause:
         seconds: 30
 
     - name: "PROD: Remove Traefik cluster-scoped resources"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete clusterrole,clusterrolebinding
@@ -193,7 +208,7 @@
       changed_when: false
 
     - name: "PROD: Remove Gatekeeper webhooks and CRDs"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete validatingwebhookconfiguration
@@ -205,7 +220,7 @@
       changed_when: false
 
     - name: "PROD: Remove Observability webhooks and cluster resources"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} delete validatingwebhookconfiguration,mutatingwebhookconfiguration
@@ -216,12 +231,13 @@
       changed_when: false
 
     - name: "PROD: Uninstall Argo CD"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.shell:
         cmd: "helm --kube-context {{ prod_context }} uninstall argocd -n argocd --wait 2>/dev/null; true"
       changed_when: false
 
     - name: "PROD: Delete namespace-scoped namespaces"
+      when: teardown_prod | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
       loop:
@@ -231,7 +247,7 @@
       failed_when: false
 
     - name: "PROD: Delete cluster-scoped namespaces"
-      when: multi_cluster | bool
+      when: multi_cluster | bool and teardown_prod | bool
       ansible.builtin.command:
         cmd: "kubectl --context {{ prod_context }} delete namespace {{ item }} --ignore-not-found --wait=false"
       loop:
@@ -249,10 +265,12 @@
       failed_when: false
 
     - name: "PROD: Wait for namespace deletion"
+      when: teardown_prod | bool
       ansible.builtin.pause:
         seconds: 15
 
     - name: "PROD: Force-remove stuck namespaces"
+      when: teardown_prod | bool
       ansible.builtin.shell:
         cmd: >-
           kubectl --context {{ prod_context }} get namespace {{ item }} -o json 2>/dev/null

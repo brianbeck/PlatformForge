@@ -26,6 +26,11 @@
           - env_load is not failed
         fail_msg: "environments.yml not found. Run bootstrap first."
 
+    - name: Set target environment flags
+      ansible.builtin.set_fact:
+        check_stage: "{{ target_env | default('all') in ['all', 'stage'] }}"
+        check_prod: "{{ target_env | default('all') in ['all', 'prod'] }}"
+
     - name: Display header
       ansible.builtin.debug:
         msg: |
