@@ -343,8 +343,13 @@
     cloudflare_api_token: "{{ (vault_for_cf.stdout | from_yaml).cloudflare_api_token | default('') }}"
   no_log: true
 
+- name: Check if stage sealed secret already exists
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cloudflare-sealed-secret.yaml"
+  register: stage_sealed_secret_file
+
 - name: Create and seal Cloudflare secret (stage)
-  when: ingress_enabled | default(false) | bool and cloudflare_api_token | length > 0 and deploy_stage | bool
+  when: ingress_enabled | default(false) | bool and cloudflare_api_token | length > 0 and deploy_stage | bool and not stage_sealed_secret_file.stat.exists
   block:
     - name: Wait for Sealed Secrets controller (stage)
       ansible.builtin.shell:
@@ -401,8 +406,13 @@
         cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cloudflare-sealed-secret.yaml"
       changed_when: true
 
+- name: Check if prod sealed secret already exists
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cloudflare-sealed-secret.yaml"
+  register: prod_sealed_secret_file
+
 - name: Create and seal Cloudflare secret (prod)
-  when: ingress_enabled | default(false) | bool and multi_cluster | bool and cloudflare_api_token | length > 0 and deploy_prod | bool
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool and cloudflare_api_token | length > 0 and deploy_prod | bool and not prod_sealed_secret_file.stat.exists
   block:
     - name: Wait for Sealed Secrets controller (prod)
       ansible.builtin.shell:
