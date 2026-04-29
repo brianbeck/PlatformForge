@@ -589,6 +589,7 @@
     mode: "0644"
   vars:
     rollouts_hostname: "{{ rollouts_hostname_stage }}"
+    env_name: stage
 
 - name: Template Argo Rollouts dashboard HTTPRoute (prod)
   when: ingress_enabled | default(false) | bool and rollouts_hostname_prod | default('') | length > 0
@@ -598,6 +599,7 @@
     mode: "0644"
   vars:
     rollouts_hostname: "{{ rollouts_hostname_prod }}"
+    env_name: prod
 
 - name: Display deployment progress
   ansible.builtin.debug:

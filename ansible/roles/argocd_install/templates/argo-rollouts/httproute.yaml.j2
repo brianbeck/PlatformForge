@@ -14,7 +14,7 @@ spec:
     - {{ rollouts_hostname }}
   rules:
     - backendRefs:
-        - name: argo-rollouts-dashboard
+        - name: argo-rollouts-{{ env_name }}-dashboard
           port: 3100
 ---
 apiVersion: cert-manager.io/v1
