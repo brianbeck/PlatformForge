@@ -133,12 +133,18 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: argo-rollouts
+      ignoreDifferences:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+          jsonPointers:
+            - /spec/rules
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
         syncOptions:
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
         retry:
           limit: 5
           backoff:
