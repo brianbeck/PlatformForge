@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── YAML Lint + Raw Manifest Validation ─────────────────────
+  yaml-lint:
+    name: YAML Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install yamllint
+        run: pip install yamllint==1.35.1
+
+      - name: Lint platform/ YAML
+        run: yamllint -c .yamllint.yml platform/
+
+      - name: Lint argocd/ YAML
+        run: yamllint -c .yamllint.yml argocd/
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: Validate raw Kubernetes manifests
+        run: |
+          kubeconform -strict -kubernetes-version 1.31.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -summary \
+            platform/argo-rollouts/rbac/*.yaml \
+            platform/gatekeeper/networkpolicy.yaml \
+            platform/gatekeeper/constraints/stage/constraints.yaml \
+            platform/gatekeeper/constraints/prod/constraints.yaml \
+            platform/falco/rules/networkpolicy.yaml \
+            platform/falco/rules/prometheusrules.yaml \
+            platform/trivy-operator/prometheusrules.yaml
+
+  # ─── Generate Helm Template Matrix ───────────────────────────
+  generate-matrix:
+    name: Generate Helm Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        run: echo "matrix=$(cat ci/helm-matrix.json | jq -c '.')" >> "$GITHUB_OUTPUT"
+
+  # ─── Helm Template + kubeconform ─────────────────────────────
+  helm-template:
+    name: "Helm: ${{ matrix.dir }} (${{ matrix.env }})"
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: Add Helm repo
+        run: helm repo add ${{ matrix.repo_name }} ${{ matrix.repo_url }}
+
+      - name: Helm template
+        run: |
+          helm template ${{ matrix.dir }}-${{ matrix.env }} \
+            ${{ matrix.chart }} \
+            --version ${{ matrix.version }} \
+            --values platform/${{ matrix.dir }}/base-values.yaml \
+            --values platform/${{ matrix.dir }}/overlays/${{ matrix.env }}/values.yaml \
+            --namespace ${{ matrix.dir }} \
+            > /tmp/rendered.yaml
+
+      - name: Validate with kubeconform
+        run: |
+          kubeconform -strict -kubernetes-version 1.31.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -skip ConstraintTemplate,K8sBlockPrivileged,K8sRequiredLabels,K8sContainerLimits,K8sBlockLatestTag,K8sBlockHostNamespace,K8sRequireNonRoot \
+            -summary \
+            /tmp/rendered.yaml
+
+  # ─── Gatekeeper Policy Test ──────────────────────────────────
+  gatekeeper-test:
+    name: Gatekeeper Policies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gator
+        run: |
+          curl -sL https://github.com/open-policy-agent/gatekeeper/releases/download/v3.22.0/gator-v3.22.0-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin gator
+
+      - name: Test ConstraintTemplates + Constraints
+        run: |
+          gator test \
+            platform/gatekeeper/templates/*.yaml \
+            platform/gatekeeper/constraints/stage/constraints.yaml \
+            platform/gatekeeper/constraints/prod/constraints.yaml
+
+  # ─── Python CLI Tests ────────────────────────────────────────
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install CLI with dev deps
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest tests/ -v

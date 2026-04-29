@@ -1,0 +1,16 @@
+---
+extends: default
+
+ignore:
+  # Sealed secrets contain base64 blobs that exceed any reasonable line length
+  - "platform/cert-manager/overlays/*/cloudflare-sealed-secret.yaml"
+
+rules:
+  line-length:
+    max: 200
+  truthy:
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  document-start: disable
