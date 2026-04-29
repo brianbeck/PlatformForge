@@ -136,8 +136,9 @@ spec:
       ignoreDifferences:
         - group: gateway.networking.k8s.io
           kind: HTTPRoute
-          jsonPointers:
-            - /spec/rules
+          jqPathExpressions:
+            - .spec.parentRefs
+            - .spec.rules
       syncPolicy:
         automated:
           prune: true
