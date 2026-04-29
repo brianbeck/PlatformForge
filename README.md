@@ -154,7 +154,8 @@ Argo CD deploys services in wave order:
 
 ### Traefik (Ingress)
 - LoadBalancer via MetalLB, HTTP->HTTPS redirect
-- IngressRoutes for Argo CD, Grafana, Prometheus
+- **Gateway API provider** with a cluster-level Gateway resource in the `traefik` namespace
+- HTTPRoutes for Argo CD, Grafana, Prometheus, Argo Rollouts dashboard
 - Stage: 1 replica | Prod: 2 replicas
 
 ### Observability (kube-prometheus-stack)
@@ -185,15 +186,8 @@ Manages Kubernetes Secrets securely. Choose during bootstrap:
 - PrometheusRules alert on critical vulnerabilities
 
 ### Argo Rollouts (Progressive Delivery)
-- Blue-green deploys (service-selector swap) and replica-based canary
-- **No weighted traffic shifting yet.** No traffic-router plugin is loaded — canary steps change replica counts but cannot enforce a precise % split between stable and canary. Blue-green works fully (instant cutover after analysis pause).
-- **TODO (Phase 2): weighted traffic shifting via Gateway API.** The historical `argoproj-labs/traefik` plugin was never released; the supported path is the `argoproj-labs/gatewayAPI` plugin ([repo](https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi)). Migration steps:
-  1. Enable Traefik's Gateway API provider in `platform/traefik/base-values.yaml` (Traefik 3.x ships it built-in).
-  2. Convert all PlatformForge `IngressRoute` resources (Argo CD, Grafana, Prometheus, Argo Rollouts dashboard) to `Gateway` + `HTTPRoute`. Both providers can run side-by-side during transition.
-  3. Add the plugin to `platform/argo-rollouts/base-values.yaml` under `controller.trafficRouterPlugins` (value is a YAML list of `{name, location}`).
-  4. Add a ClusterRole in `platform/argo-rollouts/rbac/` granting the controller `get/list/watch/update/patch` on `gateway.networking.k8s.io/httproutes`.
-
-  Scope: ~1-2 days, touches Traefik values and every existing IngressRoute in the repo.
+- Blue-green deploys (service-selector swap) and **weighted canary** with real traffic shifting
+- **Gateway API traffic router** (`argoproj-labs/gatewayAPI` plugin v0.13.0) manipulates HTTPRoute `backendRef` weights between stable and canary services during canary steps
 - Dashboard exposed at `https://rollouts-{stage,prod}.<domain>` (internal DNS only, no auth)
 - Stage: 1 controller replica | Prod: 2 (HA, leader election)
 - Consumed by DevExForge: the `devexforge-api` ServiceAccount in `engineering-platform` is granted cluster-wide CRUD on Rollout/Analysis/Experiment CRs (`platformforge:rollouts-editor`)
@@ -272,3 +266,4 @@ kubectl get servicemonitor -A
 | External Secrets (optional) | 2.3.0 | v2.3.0 |
 | Argo CD | 9.4.17 | v3.3.6 |
 | Argo Rollouts | 2.40.9 | v1.9.0 |
+| Gateway API CRDs | — | v1.4.0 |

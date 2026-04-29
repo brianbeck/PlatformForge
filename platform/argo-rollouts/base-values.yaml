@@ -10,17 +10,13 @@ keepCRDs: true
 controller:
   replicas: 1
 
-  # NOTE: No traffic-router plugin is loaded. The historical
-  # "argoproj-labs/traefik" plugin was never released and the official
-  # Argo Rollouts docs now route Traefik users through the Gateway API
-  # plugin -- which requires migrating Traefik from IngressRoute CRDs
-  # to Gateway API resources. See README "Argo Rollouts" section and
-  # the TODO in CLAUDE.md for the Phase 2 migration plan.
-  #
-  # In the meantime, Rollouts work in two modes:
-  #   - blueGreen: service-selector swap (no traffic weighting needed)
-  #   - canary:    replica-based, relies on Service round-robin
-  # Both are sufficient for DevExForge's Phase 2 use case.
+  # Gateway API traffic router plugin for weighted canary deployments.
+  # Argo Rollouts manipulates HTTPRoute backendRef weights to shift
+  # traffic between stable and canary services during a canary rollout.
+  # Requires Gateway API CRDs (v1.4.0) and a Traefik Gateway resource.
+  trafficRouterPlugins:
+    - name: "argoproj-labs/gatewayAPI"
+      location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.13.0/gatewayapi-plugin-linux-amd64"
 
   metrics:
     enabled: true

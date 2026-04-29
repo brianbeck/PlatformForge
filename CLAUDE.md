@@ -24,33 +24,24 @@ Wave 70   Trivy Operator (vulnerability scanning)
 Wave 80   Argo Rollouts (progressive delivery)
 ```
 
-### Argo Rollouts: Traffic Routing Status
+### Gateway API and Argo Rollouts Traffic Routing
 
-Currently deployed **without a traffic-router plugin**. Supported strategies:
-- `blueGreen` — service-selector swap (no weighting). Fully functional.
-- `canary` — replica-based, relies on Service round-robin. No precise traffic split.
+Traefik uses the **Gateway API provider** (`kubernetesGateway`). All service
+routing uses `HTTPRoute` resources referencing a cluster-level `Gateway` in
+the `traefik` namespace. IngressRoute CRDs (`kubernetesCRD` provider) are
+**disabled**.
 
-**TODO (Phase 2):** Add real weighted traffic shifting. The historical
-`argoproj-labs/traefik` plugin was never released, and the official Argo
-Rollouts docs now route Traefik users through the Gateway API plugin
-(`argoproj-labs/gatewayAPI`,
-`https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi`).
-This requires:
+Argo Rollouts loads the `argoproj-labs/gatewayAPI` traffic-router plugin
+(v0.13.0) at controller startup. This plugin manipulates HTTPRoute
+`backendRef` weights to shift traffic between stable and canary services
+during canary rollout steps.
 
-1. Migrating Traefik from `IngressRoute` CRDs to Kubernetes Gateway API
-   resources (`Gateway`, `HTTPRoute`). Traefik 3.x ships a Gateway API
-   provider that needs to be enabled in `platform/traefik/base-values.yaml`.
-2. Rewriting all PlatformForge IngressRoutes (Argo CD, Grafana,
-   Prometheus, Argo Rollouts dashboard) as `HTTPRoute` resources, or
-   running both providers side-by-side during transition.
-3. Adding the Gateway API plugin to `platform/argo-rollouts/base-values.yaml`
-   under `controller.trafficRouterPlugins` (the value is a list — see
-   commit history for the correct structure).
-4. Updating `platform/argo-rollouts/rbac/` with a ClusterRole granting
-   the controller patch access to `gateway.networking.k8s.io/httproutes`.
-
-Estimated scope: 1-2 days of work, touches Traefik values and every
-existing IngressRoute in the repo.
+**Key resources:**
+- Gateway API CRDs: v1.4.0 (installed by `install-argocd.yml` before ApplicationSets)
+- GatewayClass: `traefik` (auto-created by Traefik when provider is enabled)
+- Gateway: `traefik/traefik` (templated by Ansible, applied after Traefik deploys)
+- Plugin: `argoproj-labs/gatewayAPI` v0.13.0 in `platform/argo-rollouts/base-values.yaml`
+- RBAC: `platform/argo-rollouts/rbac/gateway-rbac.yaml` grants the controller HTTPRoute access
 
 ## Key Directories
 
@@ -204,15 +195,7 @@ All Helm charts reference upstream container images by tag, not digest. A supply
 **13. Runbooks**
 README troubleshooting section covers 4 scenarios. Production runbooks should cover: certificate expiry, sealed-secrets key loss, Argo CD admin password reset, node failure impact, and the full disaster recovery procedure (rebuild from scratch using only Git + vault password).
 
-### Existing TODOs (from README.md)
-
-**Argo Rollouts weighted traffic shifting (Phase 2)**
-Migrate Traefik from IngressRoute CRDs to Gateway API and load the `argoproj-labs/gatewayAPI` plugin ([repo](https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi)) to enable real weighted traffic shifting. Migration steps:
-1. Enable Traefik's Gateway API provider in `platform/traefik/base-values.yaml`
-2. Convert all IngressRoutes (Argo CD, Grafana, Prometheus, Argo Rollouts dashboard) to `Gateway` + `HTTPRoute` resources
-3. Add the plugin to `platform/argo-rollouts/base-values.yaml` under `controller.trafficRouterPlugins`
-4. Add a ClusterRole in `platform/argo-rollouts/rbac/` granting the controller access to `gateway.networking.k8s.io/httproutes`
-Scope: ~1-2 days, touches Traefik values and every existing IngressRoute.
+### Existing TODOs
 
 **Security Layer 4: Gatekeeper + External Data Provider**
 Gatekeeper querying Trivy Operator vulnerability data at admission time. Required components:

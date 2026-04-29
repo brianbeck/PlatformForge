@@ -1,0 +1,34 @@
+# RBAC granting the argo-rollouts controller permission to read and
+# manipulate Gateway API HTTPRoute resources. Required by the Gateway API
+# traffic router plugin to shift backendRef weights between stable and
+# canary services during canary rollouts.
+#
+# Deployed by the argo-rollouts-rbac ApplicationSet (sync wave 80).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-rollouts-gateway-api
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    app.kubernetes.io/component: argo-rollouts
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "httproutes/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-rollouts-gateway-api
+  labels:
+    app.kubernetes.io/part-of: platformforge
+    app.kubernetes.io/component: argo-rollouts
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-rollouts-gateway-api
+subjects:
+  - kind: ServiceAccount
+    name: argo-rollouts
+    namespace: argo-rollouts

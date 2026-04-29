@@ -200,6 +200,23 @@
     - { src: "project-stage.yml.j2", dest: "platform-project-stage.yml" }
     - { src: "project-prod.yml.j2", dest: "platform-project-prod.yml" }
 
+- name: Install Gateway API CRDs (stage)
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ stage_context }} apply -f
+      https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+  register: gw_crd_stage
+  changed_when: "'created' in gw_crd_stage.stdout or 'configured' in gw_crd_stage.stdout"
+
+- name: Install Gateway API CRDs (prod)
+  when: multi_cluster | bool
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --context {{ prod_context }} apply -f
+      https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+  register: gw_crd_prod
+  changed_when: "'created' in gw_crd_prod.stdout or 'configured' in gw_crd_prod.stdout"
+
 - name: Ensure wave directories exist (stage + prod)
   ansible.builtin.file:
     path: "{{ item.0 }}/{{ item.1.dest | dirname }}"
@@ -417,65 +434,101 @@
     path: /tmp/cf-secret-plain.yaml
     state: absent
 
-- name: Wait for Traefik CRDs to be available (stage)
+- name: Wait for Gateway API CRDs to be available (stage)
   when: ingress_enabled | default(false) | bool
   ansible.builtin.command:
-    cmd: "kubectl --context {{ stage_context }} get crd ingressroutes.traefik.io"
-  register: traefik_crd_check
+    cmd: "kubectl --context {{ stage_context }} get crd httproutes.gateway.networking.k8s.io"
+  register: gw_crd_check
   changed_when: false
   retries: 30
   delay: 10
-  until: traefik_crd_check.rc == 0
+  until: gw_crd_check.rc == 0
 
-- name: Apply Argo CD IngressRoute (stage)
+- name: Apply Traefik Gateway (stage)
+  when: ingress_enabled | default(false) | bool
+  block:
+    - name: Template stage Traefik Gateway
+      ansible.builtin.template:
+        src: gateway/traefik-gateway.yaml.j2
+        dest: /tmp/traefik-gw-stage.yml
+        mode: "0644"
+
+    - name: Apply stage Traefik Gateway
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/traefik-gw-stage.yml"
+      register: gw_stage_result
+      changed_when: true
+      retries: 5
+      delay: 15
+      until: gw_stage_result.rc == 0
+
+- name: Apply Argo CD HTTPRoute (stage)
   when: ingress_enabled | default(false) | bool and argocd_hostname_stage | default('') | length > 0
   block:
-    - name: Template stage Argo CD IngressRoute
+    - name: Template stage Argo CD HTTPRoute
       ansible.builtin.template:
-        src: ingressroutes/argocd.yml.j2
-        dest: /tmp/argocd-ir-stage.yml
+        src: gateway-routes/argocd.yml.j2
+        dest: /tmp/argocd-route-stage.yml
         mode: "0644"
       vars:
         argocd_hostname: "{{ argocd_hostname_stage }}"
 
-    - name: Apply stage Argo CD IngressRoute
+    - name: Apply stage Argo CD HTTPRoute
       ansible.builtin.command:
-        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-ir-stage.yml"
-      register: ir_stage_result
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-route-stage.yml"
+      register: route_stage_result
       changed_when: true
       retries: 5
       delay: 15
-      until: ir_stage_result.rc == 0
+      until: route_stage_result.rc == 0
 
-- name: Wait for Traefik CRDs to be available (prod)
+- name: Wait for Gateway API CRDs to be available (prod)
   when: ingress_enabled | default(false) | bool and multi_cluster | bool
   ansible.builtin.command:
-    cmd: "kubectl --context {{ prod_context }} get crd ingressroutes.traefik.io"
-  register: traefik_crd_check_prod
+    cmd: "kubectl --context {{ prod_context }} get crd httproutes.gateway.networking.k8s.io"
+  register: gw_crd_check_prod
   changed_when: false
   retries: 30
   delay: 10
-  until: traefik_crd_check_prod.rc == 0
+  until: gw_crd_check_prod.rc == 0
 
-- name: Apply Argo CD IngressRoute (prod)
+- name: Apply Traefik Gateway (prod)
+  when: ingress_enabled | default(false) | bool and multi_cluster | bool
+  block:
+    - name: Template prod Traefik Gateway
+      ansible.builtin.template:
+        src: gateway/traefik-gateway.yaml.j2
+        dest: /tmp/traefik-gw-prod.yml
+        mode: "0644"
+
+    - name: Apply prod Traefik Gateway
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/traefik-gw-prod.yml"
+      register: gw_prod_result
+      changed_when: true
+      retries: 5
+      delay: 15
+      until: gw_prod_result.rc == 0
+
+- name: Apply Argo CD HTTPRoute (prod)
   when: ingress_enabled | default(false) | bool and multi_cluster | bool and argocd_hostname_prod | default('') | length > 0
   block:
-    - name: Template prod Argo CD IngressRoute
+    - name: Template prod Argo CD HTTPRoute
       ansible.builtin.template:
-        src: ingressroutes/argocd.yml.j2
-        dest: /tmp/argocd-ir-prod.yml
+        src: gateway-routes/argocd.yml.j2
+        dest: /tmp/argocd-route-prod.yml
         mode: "0644"
       vars:
         argocd_hostname: "{{ argocd_hostname_prod }}"
 
-    - name: Apply prod Argo CD IngressRoute
+    - name: Apply prod Argo CD HTTPRoute
       ansible.builtin.command:
-        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-ir-prod.yml"
-      register: ir_prod_result
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-route-prod.yml"
+      register: route_prod_result
       changed_when: true
       retries: 5
       delay: 15
-      until: ir_prod_result.rc == 0
+      until: route_prod_result.rc == 0
 
 # ============================================================
 # TEMPLATE CERT-MANAGER AND OBSERVABILITY FILES
@@ -496,22 +549,22 @@
     dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cluster-issuer.yaml"
     mode: "0644"
 
-- name: Template observability IngressRoutes (stage)
+- name: Template observability HTTPRoutes (stage)
   when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0
   ansible.builtin.template:
-    src: observability/ingressroutes.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/ingressroutes.yaml"
+    src: observability/httproutes.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/httproutes.yaml"
     mode: "0644"
   vars:
     grafana_hostname: "{{ grafana_hostname_stage }}"
     prometheus_hostname: "{{ prometheus_hostname_stage }}"
     env_name: stage
 
-- name: Template observability IngressRoutes (prod)
+- name: Template observability HTTPRoutes (prod)
   when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0
   ansible.builtin.template:
-    src: observability/ingressroutes.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/ingressroutes.yaml"
+    src: observability/httproutes.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/httproutes.yaml"
     mode: "0644"
   vars:
     grafana_hostname: "{{ grafana_hostname_prod }}"
@@ -528,20 +581,20 @@
     - stage
     - prod
 
-- name: Template Argo Rollouts dashboard IngressRoute (stage)
+- name: Template Argo Rollouts dashboard HTTPRoute (stage)
   when: ingress_enabled | default(false) | bool and rollouts_hostname_stage | default('') | length > 0
   ansible.builtin.template:
-    src: argo-rollouts/ingressroute.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/stage/manifests/ingressroute.yaml"
+    src: argo-rollouts/httproute.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/stage/manifests/httproute.yaml"
     mode: "0644"
   vars:
     rollouts_hostname: "{{ rollouts_hostname_stage }}"
 
-- name: Template Argo Rollouts dashboard IngressRoute (prod)
+- name: Template Argo Rollouts dashboard HTTPRoute (prod)
   when: ingress_enabled | default(false) | bool and rollouts_hostname_prod | default('') | length > 0
   ansible.builtin.template:
-    src: argo-rollouts/ingressroute.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/prod/manifests/ingressroute.yaml"
+    src: argo-rollouts/httproute.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/prod/manifests/httproute.yaml"
     mode: "0644"
   vars:
     rollouts_hostname: "{{ rollouts_hostname_prod }}"
@@ -602,8 +655,10 @@
   loop:
     - /tmp/argocd-values-stage.yml
     - /tmp/argocd-values-prod.yml
-    - /tmp/argocd-ir-stage.yml
-    - /tmp/argocd-ir-prod.yml
+    - /tmp/traefik-gw-stage.yml
+    - /tmp/traefik-gw-prod.yml
+    - /tmp/argocd-route-stage.yml
+    - /tmp/argocd-route-prod.yml
 
 - name: Display summary
   ansible.builtin.debug:
