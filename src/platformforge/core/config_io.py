@@ -13,6 +13,8 @@ from platformforge.models.environment import EnvironmentConfig
 # Section markers matching Ansible's blockinfile format.
 _INGRESS_BEGIN = "# BEGIN INGRESS CONFIGURATION"
 _INGRESS_END = "# END INGRESS CONFIGURATION"
+_NOTIFICATIONS_BEGIN = "# BEGIN NOTIFICATIONS CONFIGURATION"
+_NOTIFICATIONS_END = "# END NOTIFICATIONS CONFIGURATION"
 _SECRETS_BEGIN = "# BEGIN SECRETS CONFIGURATION"
 _SECRETS_END = "# END SECRETS CONFIGURATION"
 
@@ -107,6 +109,15 @@ def save_config(config: EnvironmentConfig, path: Path) -> None:
     lines.append(f'pihole_primary_ip: "{config.pihole_primary_ip}"')
     lines.append(f'pihole_secondary_ip: "{config.pihole_secondary_ip}"')
     lines.append(_INGRESS_END)
+
+    # Notifications section
+    lines.append(_NOTIFICATIONS_BEGIN)
+    lines.append(f'notification_provider: "{config.notification_provider}"')
+    lines.append(f'slack_channel: "{config.slack_channel}"')
+    lines.append(f'smtp_host: "{config.smtp_host}"')
+    lines.append(f'smtp_from: "{config.smtp_from}"')
+    lines.append(f'smtp_to: "{config.smtp_to}"')
+    lines.append(_NOTIFICATIONS_END)
 
     # Secrets section
     lines.append(_SECRETS_BEGIN)

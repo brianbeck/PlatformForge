@@ -47,6 +47,15 @@ def print_config_table(config: EnvironmentConfig) -> None:
             table.add_row("Secondary Pi-hole", config.pihole_secondary_ip)
 
     table.add_section()
+    table.add_row("Notifications", config.notification_provider)
+    if config.notification_provider == "slack":
+        table.add_row("Slack Channel", f"#{config.slack_channel}")
+    elif config.notification_provider == "email":
+        table.add_row("SMTP Host", config.smtp_host)
+        table.add_row("From", config.smtp_from)
+        table.add_row("To", config.smtp_to)
+
+    table.add_section()
     table.add_row("Secrets Strategy", config.secrets_strategy)
     if config.vault_address:
         table.add_row("Vault Address", config.vault_address)

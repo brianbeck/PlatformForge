@@ -13,3 +13,5 @@ class VaultSecrets(BaseModel):
     pihole_primary_password: str = ""
     pihole_secondary_ip: str = ""
     pihole_secondary_password: str = ""
+    slack_webhook_url: str = ""
+    smtp_password: str = ""

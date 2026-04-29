@@ -47,6 +47,13 @@ class EnvironmentConfig(BaseModel):
     pihole_primary_ip: str = ""
     pihole_secondary_ip: str = ""
 
+    # Notifications
+    notification_provider: Literal["slack", "email", "none"] = "none"
+    slack_channel: str = ""
+    smtp_host: str = ""
+    smtp_from: str = ""
+    smtp_to: str = ""
+
     # Secrets
     secrets_strategy: Literal["sealed-secrets", "external-secrets"] = "sealed-secrets"
     vault_address: str = ""

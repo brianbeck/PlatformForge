@@ -122,21 +122,27 @@ configs:
 
     # Subscriptions: apply triggers to all apps by default
     subscriptions:
-      - recipients: []
+      - recipients:
+{% if notification_provider | default('none') == 'slack' %}
+          - "slack:{{ slack_channel }}"
+{% elif notification_provider | default('none') == 'email' %}
+          - "email:{{ smtp_to }}"
+{% else %}
+          []
+{% endif %}
         triggers:
           - on-health-degraded
           - on-sync-failed
 
-    # Service configuration (configure your destination here)
-    # Uncomment ONE of the following blocks and add credentials:
-    #
-    # services:
-    #   service.slack: |
-    #     token: $slack-token
-    #     channel: platform-alerts
-    #
-    #   service.webhook.generic: |
-    #     url: https://your-webhook-url.example.com
-    #     headers:
-    #       - name: Content-Type
-    #         value: application/json
+    # Service configuration
+{% if notification_provider | default('none') == 'slack' %}
+    services:
+      service.slack: |
+        apiURL: {{ slack_webhook_url }}
+{% elif notification_provider | default('none') == 'email' %}
+    services:
+      service.email: |
+        host: {{ smtp_host }}
+        from: {{ smtp_from }}
+        password: {{ smtp_password }}
+{% endif %}

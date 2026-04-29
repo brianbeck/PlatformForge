@@ -94,6 +94,32 @@
 # INSTALL ARGO CD
 # ============================================================
 
+- name: Load notification secrets from vault
+  when: notification_provider | default('none') != 'none'
+  block:
+    - name: Decrypt vault for notification config
+      ansible.builtin.command:
+        cmd: >-
+          ansible-vault decrypt
+          --vault-password-file {{ playbook_dir }}/../.vault_pass
+          --output -
+          {{ playbook_dir }}/../vault/secrets.yml
+      register: vault_for_notify
+      changed_when: false
+      no_log: true
+
+    - name: Set notification secret facts
+      ansible.builtin.set_fact:
+        slack_webhook_url: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_url | default('') }}"
+        smtp_password: "{{ (vault_for_notify.stdout | from_yaml).smtp_password | default('') }}"
+      no_log: true
+
+- name: Set empty notification facts when disabled
+  when: notification_provider | default('none') == 'none'
+  ansible.builtin.set_fact:
+    slack_webhook_url: ""
+    smtp_password: ""
+
 - name: Add Argo CD Helm repository
   ansible.builtin.command:
     cmd: "helm repo add argo {{ argocd_helm_repo }}"
@@ -573,6 +599,24 @@
     src: cert-manager/cluster-issuer.yaml.j2
     dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cluster-issuer.yaml"
     mode: "0644"
+
+- name: Template Alertmanager config (stage)
+  when: ingress_enabled | default(false) | bool and deploy_stage | bool
+  ansible.builtin.template:
+    src: observability/alertmanager-values.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/alertmanager-values.yaml"
+    mode: "0644"
+  vars:
+    env_name: stage
+
+- name: Template Alertmanager config (prod)
+  when: ingress_enabled | default(false) | bool and deploy_prod | bool
+  ansible.builtin.template:
+    src: observability/alertmanager-values.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/alertmanager-values.yaml"
+    mode: "0644"
+  vars:
+    env_name: prod
 
 - name: Template observability HTTPRoutes (stage)
   when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0 and deploy_stage | bool

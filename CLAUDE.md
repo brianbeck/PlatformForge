@@ -134,25 +134,23 @@ Source: `src/platformforge/` (Click + Rich + Pydantic).  Install with `pip insta
 
 ### High Priority
 
-**1. CI pipeline for PlatformForge itself**
-No `.github/workflows/` or equivalent exists. A bad push to `platform/` goes straight to Argo CD auto-sync on stage. A basic pipeline should include:
-- YAML lint + `helm template --dry-run` for every service
-- `kubeconform` to validate rendered manifests against K8s schemas
-- `conftest` to run OPA policies against PlatformForge's own manifests
-- `gator test` to validate Gatekeeper ConstraintTemplates against sample resources
+**1. CI pipeline for PlatformForge itself** — **DONE**
+GitHub Actions workflow with yaml-lint, helm-template (18 matrix jobs), gatekeeper-test, and python-tests.
 
-**2. Argo CD notifications**
-ApplicationSets have `notifications.argoproj.io/subscribe.on-health-degraded` and `on-sync-failed` annotations, but no notification service is configured. These annotations are inert. Wire to Slack, email, or webhook so sync failures and health degradation are visible without watching dashboards.
+**2. Argo CD notifications** — **DONE**
+Configured via `platformforge init` (Slack or Email). Templates, triggers, and subscriptions
+are wired in `values.yml.j2`. Webhook URL stored in Ansible Vault.
+Future TODO: add generic webhook support.
 
-**3. Alertmanager routing**
-kube-prometheus-stack is deployed with PrometheusRules for Falco and Trivy, but no Alertmanager receiver is configured (Slack, PagerDuty, email). Alerts fire into the void. Configure receivers in `platform/observability/overlays/prod/values.yaml` at minimum.
+**3. Alertmanager routing** — **DONE**
+Alertmanager receiver config templated per-env (`alertmanager-values.yaml`) from the
+notification provider chosen in `platformforge init`. Slack/Email routes critical alerts.
+12 PrometheusRules (Falco + Trivy) fire to the configured receiver.
 
-**4. Grafana dashboards-as-code**
-Grafana is deployed but no dashboards are provisioned via ConfigMap or sidecar. Each redeploy starts fresh. Provision at minimum:
-- Argo CD dashboard (community JSON available)
-- Falco events dashboard
-- Trivy vulnerability summary
-- Cluster overview (verify `defaultDashboardsEnabled: true` in kube-prometheus-stack values)
+**4. Grafana dashboards-as-code** — **DONE**
+Dashboards provisioned via Grafana.com IDs in `platform/observability/dashboards/dashboards-values.yaml`:
+- Argo CD (ID 14584), Falco (ID 11914), Trivy Operator (ID 16337), Node Exporter (ID 1860)
+- Default Kubernetes dashboards enabled via `defaultDashboardsEnabled: true` (chart default)
 
 ### Medium Priority
 

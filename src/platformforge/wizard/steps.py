@@ -30,6 +30,7 @@ def run_wizard(project_root: Path) -> EnvironmentConfig:
     _section_repo(project_root, saved, data)
     _section_environment(saved, data)
     _section_ingress(project_root, saved, data)
+    _section_notifications(project_root, saved, data)
     _section_secrets(saved, data)
 
     config = EnvironmentConfig(**data)
@@ -310,6 +311,10 @@ def _collect_secrets(
 
     secrets = VaultSecrets()
 
+    # Carry forward notification secrets collected in _section_notifications
+    secrets.slack_webhook_url = data.pop("_slack_webhook_url", existing.slack_webhook_url)
+    secrets.smtp_password = data.pop("_smtp_password", existing.smtp_password)
+
     if ingress_enabled:
         # Cloudflare API token
         token = ask(
@@ -377,7 +382,84 @@ def _collect_secrets(
     save_secrets(project_root, secrets)
 
 
-# ── Section 4: Secrets Strategy ────────────────────────────────────
+# ── Section 4: Notifications ───────────────────────────────────────
+
+
+def _section_notifications(
+    project_root: Path,
+    saved: dict,
+    data: dict,
+) -> None:
+    console.print()
+    console.print(Panel("[bold]Notifications[/bold]", border_style="blue"))
+
+    # Load existing secrets for defaults
+    existing = VaultSecrets()
+    try:
+        loaded = load_secrets(project_root)
+        if loaded:
+            existing = loaded
+    except Exception:
+        pass
+
+    default_provider = saved.get("notification_provider", "none")
+    console.print("  How do you want to receive notifications?")
+    console.print("  [cyan]1[/cyan]. Slack")
+    console.print("  [cyan]2[/cyan]. Email")
+    console.print("  [cyan]3[/cyan]. None")
+    console.print()
+
+    default_choice = {"slack": "1", "email": "2", "none": "3"}.get(default_provider, "3")
+    choice = ask("Choice", default=default_choice)
+
+    if choice == "1" or choice.lower() == "slack":
+        data["notification_provider"] = "slack"
+        data["slack_channel"] = ask(
+            "Slack channel name (without #)",
+            default=saved.get("slack_channel", "platform-alerts"),
+        )
+        webhook = ask(
+            "Slack webhook URL",
+            default=existing.slack_webhook_url,
+            password=True,
+        )
+        # Store temporarily in data; _collect_secrets will move to vault
+        data["_slack_webhook_url"] = webhook
+        data["smtp_host"] = ""
+        data["smtp_from"] = ""
+        data["smtp_to"] = ""
+
+    elif choice == "2" or choice.lower() == "email":
+        data["notification_provider"] = "email"
+        data["smtp_host"] = ask(
+            "SMTP host (e.g. smtp.gmail.com:587)",
+            default=saved.get("smtp_host", ""),
+        )
+        data["smtp_from"] = ask(
+            "From address",
+            default=saved.get("smtp_from", ""),
+        )
+        data["smtp_to"] = ask(
+            "To address",
+            default=saved.get("smtp_to", ""),
+        )
+        smtp_pw = ask(
+            "SMTP password",
+            default=existing.smtp_password,
+            password=True,
+        )
+        data["_smtp_password"] = smtp_pw
+        data["slack_channel"] = ""
+
+    else:
+        data["notification_provider"] = "none"
+        data["slack_channel"] = ""
+        data["smtp_host"] = ""
+        data["smtp_from"] = ""
+        data["smtp_to"] = ""
+
+
+# ── Section 5: Secrets Strategy ────────────────────────────────────
 
 
 def _section_secrets(saved: dict, data: dict) -> None:

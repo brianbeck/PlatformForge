@@ -1,0 +1,23 @@
+# Grafana dashboards provisioned via Grafana.com dashboard IDs.
+# The Grafana sidecar downloads these at startup.
+# To add a new dashboard, find its ID at https://grafana.com/grafana/dashboards/
+# and add an entry below.
+grafana:
+  dashboards:
+    default:
+      argocd:
+        gnetId: 14584
+        revision: 1
+        datasource: Prometheus
+      falco:
+        gnetId: 11914
+        revision: 1
+        datasource: Prometheus
+      trivy-operator:
+        gnetId: 16337
+        revision: 1
+        datasource: Prometheus
+      node-exporter:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
