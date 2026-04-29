@@ -17,5 +17,4 @@ resources:
 metrics:
   serviceMonitor:
     enabled: true
-    labels:
-      app.kubernetes.io/part-of: platformforge
+    labels: {}

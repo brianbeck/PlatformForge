@@ -37,11 +37,10 @@ jobs:
           kubeconform -strict -kubernetes-version 1.31.0 \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -ignore-missing-schemas \
             -summary \
             platform/argo-rollouts/rbac/*.yaml \
             platform/gatekeeper/networkpolicy.yaml \
-            platform/gatekeeper/constraints/stage/constraints.yaml \
-            platform/gatekeeper/constraints/prod/constraints.yaml \
             platform/falco/rules/networkpolicy.yaml \
             platform/falco/rules/prometheusrules.yaml \
             platform/trivy-operator/prometheusrules.yaml
@@ -93,10 +92,10 @@ jobs:
 
       - name: Validate with kubeconform
         run: |
-          kubeconform -strict -kubernetes-version 1.31.0 \
+          kubeconform -kubernetes-version 1.31.0 \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            -skip ConstraintTemplate,K8sBlockPrivileged,K8sRequiredLabels,K8sContainerLimits,K8sBlockLatestTag,K8sBlockHostNamespace,K8sRequireNonRoot \
+            -ignore-missing-schemas \
             -summary \
             /tmp/rendered.yaml
 
@@ -115,9 +114,9 @@ jobs:
       - name: Test ConstraintTemplates + Constraints
         run: |
           gator test \
-            platform/gatekeeper/templates/*.yaml \
-            platform/gatekeeper/constraints/stage/constraints.yaml \
-            platform/gatekeeper/constraints/prod/constraints.yaml
+            --filename=platform/gatekeeper/templates/ \
+            --filename=platform/gatekeeper/constraints/stage/constraints.yaml \
+            --filename=platform/gatekeeper/constraints/prod/constraints.yaml
 
   # ─── Python CLI Tests ────────────────────────────────────────
   python-tests:

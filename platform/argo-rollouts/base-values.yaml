@@ -22,8 +22,7 @@ controller:
     enabled: true
     serviceMonitor:
       enabled: true
-      additionalLabels:
-        app.kubernetes.io/part-of: platformforge
+      additionalLabels: {}
 
   resources:
     requests:
