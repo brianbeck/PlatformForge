@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'argocd/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'argocd/**'
 
 jobs:
   # ─── YAML Lint + Raw Manifest Validation ─────────────────────
