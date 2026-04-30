@@ -33,6 +33,7 @@ spec:
               - $values/platform/observability/base-values.yaml
               - "$values/platform/observability/overlays/{{env}}/values.yaml"
               - $values/platform/observability/dashboards/dashboards-values.yaml
+              - "$values/platform/observability/overlays/{{env}}/alertmanager-url-values.yaml"
             skipCrds: false
         - repoURL: https://github.com/brianbeck/PlatformForge.git
           targetRevision: main

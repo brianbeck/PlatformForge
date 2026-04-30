@@ -204,7 +204,7 @@ def _set_ingress_disabled(data: dict) -> None:
     """Set all ingress-related fields to their disabled defaults."""
     data["admin_email"] = ""
     data["base_fqdn"] = ""
-    for svc in ("argocd", "grafana", "prometheus", "rollouts"):
+    for svc in ("argocd", "grafana", "prometheus", "alertmanager", "rollouts"):
         data[f"{svc}_hostname_stage"] = ""
         data[f"{svc}_hostname_prod"] = ""
     data["grafana_ingress_enabled"] = False
@@ -268,6 +268,24 @@ def _collect_hostnames(saved: dict, data: dict, fqdn: str) -> None:
     else:
         data["prometheus_hostname_stage"] = ""
         data["prometheus_hostname_prod"] = ""
+
+    # Alertmanager (follows Prometheus — same ingress toggle)
+    if prom:
+        data["alertmanager_hostname_stage"] = ask(
+            "Alertmanager stage hostname",
+            default=saved.get(
+                "alertmanager_hostname_stage", f"alertmanager-stage.{fqdn}"
+            ),
+        )
+        data["alertmanager_hostname_prod"] = ask(
+            "Alertmanager prod hostname",
+            default=saved.get(
+                "alertmanager_hostname_prod", f"alertmanager-prod.{fqdn}"
+            ),
+        )
+    else:
+        data["alertmanager_hostname_stage"] = ""
+        data["alertmanager_hostname_prod"] = ""
 
     # Rollouts dashboard
     rollouts = ask_confirm(

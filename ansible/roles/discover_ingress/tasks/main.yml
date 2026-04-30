@@ -34,6 +34,8 @@
     grafana_hostname_prod: ""
     prometheus_hostname_stage: ""
     prometheus_hostname_prod: ""
+    alertmanager_hostname_stage: ""
+    alertmanager_hostname_prod: ""
     rollouts_hostname_stage: ""
     rollouts_hostname_prod: ""
 
@@ -117,6 +119,8 @@
     default_grafana_prod: "{{ saved.grafana_hostname_prod | default('grafana-prod.' + base_fqdn, true) }}"
     default_prometheus_stage: "{{ saved.prometheus_hostname_stage | default('prometheus-stage.' + base_fqdn, true) }}"
     default_prometheus_prod: "{{ saved.prometheus_hostname_prod | default('prometheus-prod.' + base_fqdn, true) }}"
+    default_alertmanager_stage: "{{ saved.alertmanager_hostname_stage | default('alertmanager-stage.' + base_fqdn, true) }}"
+    default_alertmanager_prod: "{{ saved.alertmanager_hostname_prod | default('alertmanager-prod.' + base_fqdn, true) }}"
     default_rollouts_stage: "{{ saved.rollouts_hostname_stage | default('rollouts-stage.' + base_fqdn, true) }}"
     default_rollouts_prod: "{{ saved.rollouts_hostname_prod | default('rollouts-prod.' + base_fqdn, true) }}"
 
@@ -213,6 +217,8 @@
     grafana_hostname_prod: "{{ (grafana_prod_input.user_input | trim | default(default_grafana_prod, true)) if grafana_ingress_enabled | bool else '' }}"
     prometheus_hostname_stage: "{{ (prometheus_stage_input.user_input | trim | default(default_prometheus_stage, true)) if prometheus_ingress_enabled | bool else '' }}"
     prometheus_hostname_prod: "{{ (prometheus_prod_input.user_input | trim | default(default_prometheus_prod, true)) if prometheus_ingress_enabled | bool else '' }}"
+    alertmanager_hostname_stage: "{{ default_alertmanager_stage if prometheus_ingress_enabled | bool else '' }}"
+    alertmanager_hostname_prod: "{{ default_alertmanager_prod if prometheus_ingress_enabled | bool else '' }}"
     rollouts_hostname_stage: "{{ (rollouts_stage_input.user_input | trim | default(default_rollouts_stage, true)) if rollouts_ingress_enabled | bool else '' }}"
     rollouts_hostname_prod: "{{ (rollouts_prod_input.user_input | trim | default(default_rollouts_prod, true)) if rollouts_ingress_enabled | bool else '' }}"
 
@@ -420,6 +426,8 @@
       prometheus_ingress_enabled: {{ prometheus_ingress_enabled | default(false) }}
       prometheus_hostname_stage: "{{ prometheus_hostname_stage }}"
       prometheus_hostname_prod: "{{ prometheus_hostname_prod }}"
+      alertmanager_hostname_stage: "{{ alertmanager_hostname_stage }}"
+      alertmanager_hostname_prod: "{{ alertmanager_hostname_prod }}"
       rollouts_ingress_enabled: {{ rollouts_ingress_enabled | default(false) }}
       rollouts_hostname_stage: "{{ rollouts_hostname_stage }}"
       rollouts_hostname_prod: "{{ rollouts_hostname_prod }}"

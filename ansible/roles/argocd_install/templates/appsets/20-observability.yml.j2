@@ -35,6 +35,7 @@ spec:
               - $values/platform/observability/base-values.yaml
               - "$values/platform/observability/overlays/{{ '{{env}}' }}/values.yaml"
               - $values/platform/observability/dashboards/dashboards-values.yaml
+              - "$values/platform/observability/overlays/{{ '{{env}}' }}/alertmanager-url-values.yaml"
             skipCrds: false
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}

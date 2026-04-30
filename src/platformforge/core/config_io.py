@@ -102,6 +102,8 @@ def save_config(config: EnvironmentConfig, path: Path) -> None:
     lines.append(f"prometheus_ingress_enabled: {config.prometheus_ingress_enabled}")
     lines.append(f'prometheus_hostname_stage: "{config.prometheus_hostname_stage}"')
     lines.append(f'prometheus_hostname_prod: "{config.prometheus_hostname_prod}"')
+    lines.append(f'alertmanager_hostname_stage: "{config.alertmanager_hostname_stage}"')
+    lines.append(f'alertmanager_hostname_prod: "{config.alertmanager_hostname_prod}"')
     lines.append(f"rollouts_ingress_enabled: {config.rollouts_ingress_enabled}")
     lines.append(f'rollouts_hostname_stage: "{config.rollouts_hostname_stage}"')
     lines.append(f'rollouts_hostname_prod: "{config.rollouts_hostname_prod}"')

@@ -661,7 +661,17 @@
   vars:
     grafana_hostname: "{{ grafana_hostname_stage }}"
     prometheus_hostname: "{{ prometheus_hostname_stage }}"
+    alertmanager_hostname: "{{ alertmanager_hostname_stage | default('') }}"
     env_name: stage
+
+- name: Template Alertmanager URL values (stage)
+  when: ingress_enabled | default(false) | bool and alertmanager_hostname_stage | default('') | length > 0 and deploy_stage | bool
+  ansible.builtin.template:
+    src: observability/alertmanager-url-values.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/alertmanager-url-values.yaml"
+    mode: "0644"
+  vars:
+    alertmanager_hostname: "{{ alertmanager_hostname_stage }}"
 
 - name: Template observability HTTPRoutes (prod)
   when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0 and deploy_prod | bool
@@ -672,7 +682,17 @@
   vars:
     grafana_hostname: "{{ grafana_hostname_prod }}"
     prometheus_hostname: "{{ prometheus_hostname_prod }}"
+    alertmanager_hostname: "{{ alertmanager_hostname_prod | default('') }}"
     env_name: prod
+
+- name: Template Alertmanager URL values (prod)
+  when: ingress_enabled | default(false) | bool and alertmanager_hostname_prod | default('') | length > 0 and deploy_prod | bool
+  ansible.builtin.template:
+    src: observability/alertmanager-url-values.yaml.j2
+    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/alertmanager-url-values.yaml"
+    mode: "0644"
+  vars:
+    alertmanager_hostname: "{{ alertmanager_hostname_prod }}"
 
 - name: Ensure Argo Rollouts overlay directories exist
   when: ingress_enabled | default(false) | bool

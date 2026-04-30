@@ -40,6 +40,8 @@ class EnvironmentConfig(BaseModel):
     prometheus_ingress_enabled: bool = False
     prometheus_hostname_stage: str = ""
     prometheus_hostname_prod: str = ""
+    alertmanager_hostname_stage: str = ""
+    alertmanager_hostname_prod: str = ""
     rollouts_ingress_enabled: bool = False
     rollouts_hostname_stage: str = ""
     rollouts_hostname_prod: str = ""

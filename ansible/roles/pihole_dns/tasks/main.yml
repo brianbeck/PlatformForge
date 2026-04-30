@@ -46,6 +46,8 @@
         + ([{'hostname': grafana_hostname_prod, 'ip': traefik_ip_prod}] if grafana_hostname_prod | default('') | length > 0 else [])
         + ([{'hostname': prometheus_hostname_stage, 'ip': traefik_ip_stage}] if prometheus_hostname_stage | default('') | length > 0 else [])
         + ([{'hostname': prometheus_hostname_prod, 'ip': traefik_ip_prod}] if prometheus_hostname_prod | default('') | length > 0 else [])
+        + ([{'hostname': alertmanager_hostname_stage, 'ip': traefik_ip_stage}] if alertmanager_hostname_stage | default('') | length > 0 else [])
+        + ([{'hostname': alertmanager_hostname_prod, 'ip': traefik_ip_prod}] if alertmanager_hostname_prod | default('') | length > 0 else [])
         + ([{'hostname': rollouts_hostname_stage, 'ip': traefik_ip_stage}] if rollouts_hostname_stage | default('') | length > 0 else [])
         + ([{'hostname': rollouts_hostname_prod, 'ip': traefik_ip_prod}] if rollouts_hostname_prod | default('') | length > 0 else [])
       }}
