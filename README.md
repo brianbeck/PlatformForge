@@ -79,41 +79,108 @@ PlatformForge/
     └── trivy-operator/              # Vulnerability scanning
 ```
 
+## Repository Architecture
+
+PlatformForge uses a two-repo model:
+
+| Repo | Visibility | Contains |
+|---|---|---|
+| **PlatformForge** (this repo) | Public | Base Helm values, Ansible roles, CLI, CI, Gatekeeper policies, dashboards, RBAC |
+| **platformforge-env** | Private | Environment-specific config: overlay values, hostnames, secrets, ApplicationSets |
+
+Argo CD reads from both repos — PlatformForge for platform definitions, platformforge-env for your cluster-specific configuration. This keeps internal hostnames, email addresses, and secrets out of the public repo.
+
 ## Quick Start
 
 ### Prerequisites
 
-Python 3.9+ required. Install the CLI:
+- Python 3.9+
+- `kubectl`, `helm`, `git`, `kubeseal` on PATH
+- One or two Kubernetes clusters with kubeconfig configured
+- A private GitHub repo for your environment config
+
+### 1. Clone and install
 
 ```bash
+# Clone PlatformForge
+git clone https://github.com/YOUR_ORG/PlatformForge.git
+cd PlatformForge
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .                    # or: pip install -e ".[dev]" for tests
+pip install -e .
 ```
 
-### 1. Configure
+### 2. Create your environment repo
 
 ```bash
+# Create the private env repo alongside PlatformForge
+cd ..
+mkdir platformforge-env && cd platformforge-env
+git init
+
+# Create the directory structure
+mkdir -p vault argocd/root argocd/waves-stage argocd/waves-prod
+for svc in traefik observability cert-manager gatekeeper falco sealed-secrets external-secrets trivy-operator argo-rollouts; do
+  mkdir -p overlays/$svc/stage overlays/$svc/prod
+done
+mkdir -p overlays/argo-rollouts/stage/manifests overlays/argo-rollouts/prod/manifests
+
+# Create .gitignore
+cat > .gitignore << 'EOF'
+.vault_pass
+vault-password.txt
+*.retry
+__pycache__/
+*.pyc
+.DS_Store
+EOF
+
+# Initial commit and push to your private repo
+git add -A
+git commit -m "Initial platformforge-env structure"
+gh repo create YOUR_ORG/platformforge-env --private --source=. --push
+```
+
+### 3. Configure
+
+```bash
+# Run from either directory — the CLI finds both repos automatically
+cd ../PlatformForge
 platformforge init
 ```
 
-Interactive wizard prompts for: Git repo URL, environment model (A/B), kubectl contexts, Traefik ingress, hostnames, Pi-hole DNS, secrets management (Sealed Secrets or External Secrets Operator). All answers saved and reused on re-runs.
+The interactive wizard prompts for:
+- **PlatformForge repo URL** (public) and **env repo URL** (private)
+- **GitHub PAT** for Argo CD to access the private env repo
+- Environment model (A/B), kubectl contexts
+- Traefik ingress, hostnames, admin email, base domain
+- Notification provider (Slack/Email/None) with channel configuration
+- Secrets management (Sealed Secrets or External Secrets Operator)
 
-### 2. Deploy
+All answers are saved to `platformforge-env/environments.yml` and reused on re-runs. Secrets are encrypted in `platformforge-env/vault/secrets.yml`.
+
+### 4. Deploy
 
 ```bash
 platformforge deploy
 ```
 
-This installs Argo CD, generates ApplicationSets, and applies them. Argo CD then deploys all platform services in sync-wave order.
+This installs Argo CD, generates ApplicationSets in the env repo, and applies them. Argo CD then deploys all platform services in sync-wave order.
 
-### 3. Commit
+### 5. Commit generated files
+
+After deploy, commit the generated ApplicationSets and overlay files in your env repo:
 
 ```bash
-git add argocd/ && git commit -m "Generate ApplicationSets" && git push
+cd ../platformforge-env
+git add argocd/ overlays/
+git commit -m "Generate ApplicationSets and overlays"
+git push
 ```
 
-### 4. Verify
+Argo CD watches both repos — it reads base values from PlatformForge and overlays from your env repo.
+
+### 6. Verify
 
 ```bash
 platformforge status
@@ -123,15 +190,23 @@ Or access UIs (if ingress enabled):
 - Argo CD: `https://argocd-{stage,prod}.<domain>`
 - Grafana: `https://grafana-{stage,prod}.<domain>`
 - Prometheus: `https://prometheus-{stage,prod}.<domain>`
+- Alertmanager: `https://alertmanager-{stage,prod}.<domain>`
 - Argo Rollouts: `https://rollouts-{stage,prod}.<domain>`
 
-### 5. Iterate
+### 7. Iterate
 
 ```bash
-# Edit platform values
+# Edit base values (in PlatformForge — shared across all environments)
+cd PlatformForge
 vim platform/falco/base-values.yaml
 git add -A && git commit -m "Update Falco rules" && git push
-# Argo CD auto-syncs stage
+
+# Edit overlay values (in platformforge-env — environment-specific)
+cd ../platformforge-env
+vim overlays/falco/prod/values.yaml
+git add -A && git commit -m "Tune Falco prod resources" && git push
+
+# Argo CD auto-syncs stage; prod may require manual sync depending on config
 ```
 
 ## Sync Wave Order
