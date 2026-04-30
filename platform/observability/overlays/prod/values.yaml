@@ -55,6 +55,8 @@ alertmanager:
 
 grafana:
   replicas: 1
+  serviceMonitor:
+    scrapeTimeout: 10s
   resources:
     requests:
       cpu: 200m

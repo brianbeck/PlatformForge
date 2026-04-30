@@ -73,7 +73,7 @@ spec:
     - {{ alertmanager_hostname }}
   rules:
     - backendRefs:
-        - name: observability-{{ env_name }}-kube-p-alertmanager
+        - name: alertmanager-operated
           port: 9093
 ---
 apiVersion: cert-manager.io/v1
