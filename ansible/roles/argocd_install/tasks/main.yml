@@ -827,8 +827,8 @@
 - name: Set Traefik IP facts
   when: ingress_enabled | default(false) | bool and pihole_enabled | default(false) | bool
   ansible.builtin.set_fact:
-    traefik_ip_stage: "{{ traefik_ip_stage_raw.stdout | trim }}"
-    traefik_ip_prod: "{{ (traefik_ip_prod_raw.stdout | trim) if multi_cluster | bool else traefik_ip_stage_raw.stdout | trim }}"
+    traefik_ip_stage: "{{ traefik_ip_stage_raw.stdout | default('') | trim }}"
+    traefik_ip_prod: "{{ (traefik_ip_prod_raw.stdout | default('') | trim) if multi_cluster | bool else (traefik_ip_stage_raw.stdout | default('') | trim) }}"
 
 # ============================================================
 # CLEANUP
