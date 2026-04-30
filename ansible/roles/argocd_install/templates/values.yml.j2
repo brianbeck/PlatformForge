@@ -124,7 +124,7 @@ configs:
     subscriptions:
       - recipients:
 {% if notification_provider | default('none') == 'slack' %}
-          - "slack:{{ slack_channel }}"
+          - "slack:platform"
 {% elif notification_provider | default('none') == 'email' %}
           - "email:{{ smtp_to }}"
 {% else %}
@@ -136,9 +136,15 @@ configs:
 
     # Service configuration
 {% if notification_provider | default('none') == 'slack' %}
+{% if argocd_env == 'stage' %}
     services:
       service.slack: |
-        apiURL: {{ slack_webhook_url }}
+        apiURL: {{ slack_webhook_stage }}
+{% else %}
+    services:
+      service.slack: |
+        apiURL: {{ slack_webhook_prod_critical }}
+{% endif %}
 {% elif notification_provider | default('none') == 'email' %}
     services:
       service.email: |

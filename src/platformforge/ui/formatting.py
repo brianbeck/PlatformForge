@@ -49,7 +49,11 @@ def print_config_table(config: EnvironmentConfig) -> None:
     table.add_section()
     table.add_row("Notifications", config.notification_provider)
     if config.notification_provider == "slack":
-        table.add_row("Slack Channel", f"#{config.slack_channel}")
+        table.add_row("Stage Alerts", f"#{config.slack_channel_stage}")
+        table.add_row("Prod Critical", f"#{config.slack_channel_prod_critical}")
+        table.add_row("Prod Warnings", f"#{config.slack_channel_prod_warnings}")
+        table.add_row("Security", f"#{config.slack_channel_security}")
+        table.add_row("Vulnerabilities", f"#{config.slack_channel_vulnerabilities}")
     elif config.notification_provider == "email":
         table.add_row("SMTP Host", config.smtp_host)
         table.add_row("From", config.smtp_from)

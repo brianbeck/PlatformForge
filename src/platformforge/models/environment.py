@@ -49,7 +49,11 @@ class EnvironmentConfig(BaseModel):
 
     # Notifications
     notification_provider: Literal["slack", "email", "none"] = "none"
-    slack_channel: str = ""
+    slack_channel_stage: str = ""
+    slack_channel_prod_critical: str = ""
+    slack_channel_prod_warnings: str = ""
+    slack_channel_security: str = ""
+    slack_channel_vulnerabilities: str = ""
     smtp_host: str = ""
     smtp_from: str = ""
     smtp_to: str = ""

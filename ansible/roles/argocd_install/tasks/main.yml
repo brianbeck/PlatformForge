@@ -110,14 +110,22 @@
 
     - name: Set notification secret facts
       ansible.builtin.set_fact:
-        slack_webhook_url: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_url | default('') }}"
+        slack_webhook_stage: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_stage | default('') }}"
+        slack_webhook_prod_critical: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_prod_critical | default('') }}"
+        slack_webhook_prod_warnings: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_prod_warnings | default('') }}"
+        slack_webhook_security: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_security | default('') }}"
+        slack_webhook_vulnerabilities: "{{ (vault_for_notify.stdout | from_yaml).slack_webhook_vulnerabilities | default('') }}"
         smtp_password: "{{ (vault_for_notify.stdout | from_yaml).smtp_password | default('') }}"
       no_log: true
 
 - name: Set empty notification facts when disabled
   when: notification_provider | default('none') == 'none'
   ansible.builtin.set_fact:
-    slack_webhook_url: ""
+    slack_webhook_stage: ""
+    slack_webhook_prod_critical: ""
+    slack_webhook_prod_warnings: ""
+    slack_webhook_security: ""
+    slack_webhook_vulnerabilities: ""
     smtp_password: ""
 
 - name: Add Argo CD Helm repository

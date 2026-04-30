@@ -161,7 +161,16 @@ Currently pushes to `main` trigger Argo CD reconciliation before CI finishes. Se
 - Optionally disable Argo CD auto-sync on prod and require manual sync after stage is verified
 
 **6. Backup/restore for Argo CD** (was #5)
-If the Argo CD namespace is deleted, all Application state, RBAC, repo credentials are lost. Options: `argocd admin export` via CronJob to PV or S3. Since ApplicationSets are in Git, the main risk is custom RBAC and repo configs — at minimum document the manual restore path.
+**Trigger: implement before DevExForge deploys to prod.** Currently low risk —
+`platformforge deploy` rebuilds everything from Git + vault. Once DevExForge
+creates Argo CD Applications dynamically (team apps, repo credentials, custom
+RBAC), Argo CD holds state that no single Git repo can reconstruct.
+Plan:
+- CronJob: `argocd admin export` daily → upload to MinIO (on the local network)
+- MinIO endpoint, bucket, credentials prompted during `platformforge init` (optional)
+- `platformforge backup` / `platformforge restore` CLI commands
+- Runbook in README: full recovery procedure (scratch rebuild vs partial restore)
+- Credentials stored in Ansible Vault
 
 **7. Pod Disruption Budgets** (was #6)
 Prod overlays set 2 replicas for Traefik, observability, and argo-rollouts but no PDBs. A node drain can take both replicas simultaneously. Add PDBs for:
@@ -207,9 +216,30 @@ Services for Prometheus discovery. Create Services in ClusterForge exposing metr
 (etcd: 2381, controller-manager: 10257, scheduler: 10259), then re-enable monitoring in
 `platform/observability/base-values.yaml` (`kubeEtcd`, `kubeControllerManager`, `kubeScheduler`).
 
+**Email notification provider: multi-recipient routing**
+The email provider currently sends all alerts to a single address. To match the Slack
+experience, add per-severity and per-type routing:
+- Separate "to" addresses for critical vs warning
+- Separate addresses for security (Falco) and vulnerability (Trivy) alerts
+- Per-environment subject line prefixes (`[STAGE]` vs `[PROD]`)
+- CLI wizard should prompt for each recipient with the same contextual descriptions
+  used by the Slack channel prompts
+
 **Generic webhook notification provider**
 Add a third notification provider option (`webhook`) to `platformforge init` alongside Slack and Email.
 Configures Argo CD `service.webhook.generic` and Alertmanager `webhook_configs` receiver with a user-provided URL.
+
+**Team-scoped alert routing**
+As DevExForge onboards teams, each team may want alerts for their own namespaces routed
+to their own Slack channels or email addresses. This would require:
+- A configurable alert routing table (team → namespace pattern → destination)
+- Either a CLI command (`platformforge alerts add-route`) or a declarative config file
+  that maps team namespaces to notification channels
+- Alertmanager route hierarchy: platform-wide routes (current) as the default,
+  with team-specific sub-routes that match by namespace label
+- Argo CD notification subscriptions per-Application (already supported via annotations)
+- Consider whether this belongs in PlatformForge (platform team controls routing) or
+  DevExForge (teams self-service their own alert destinations)
 
 **Security Layer 4: Gatekeeper + External Data Provider**
 Gatekeeper querying Trivy Operator vulnerability data at admission time. Required components:

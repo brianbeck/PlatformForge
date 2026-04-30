@@ -207,6 +207,75 @@ Manages Kubernetes Secrets securely. Choose during bootstrap:
 | 3 | Trivy Operator | Continuous | **Implemented** |
 | 4 | Gatekeeper + External Data | Admission | **Planned** |
 
+## Alerting & Notifications
+
+Configured during `platformforge init`. Supports Slack (with per-channel webhooks) or Email. Alerts are routed by type and environment:
+
+### Slack Channel Layout
+
+| Channel | What goes there | Source |
+|---|---|---|
+| `#<base>-stage` | All stage alerts (critical + warning) | Alertmanager + Argo CD |
+| `#<base>-prod-critical` | Prod critical alerts only | Alertmanager + Argo CD |
+| `#<base>-prod-warnings` | Prod warning alerts | Alertmanager |
+| `#security` | Falco runtime security alerts (both envs) | Alertmanager |
+| `#vulnerabilities` | Trivy vulnerability alerts (both envs) | Alertmanager |
+
+The base name (default: `platform`) and all channel names are configurable during init.
+
+### Alert Routing
+
+**Alertmanager** routes PrometheusRule alerts by `alertname` pattern and `severity` label:
+
+| Alert pattern | Stage | Prod |
+|---|---|---|
+| `Falco*` (shell-in-container, privilege escalation, etc.) | `#<base>-stage` + `#security` | `#<base>-prod-critical` or `#<base>-prod-warnings` + `#security` |
+| `*Vulnerability*`, `TrivyOperator*`, `*Misconfiguration*` | `#<base>-stage` + `#vulnerabilities` | `#<base>-prod-critical` or `#<base>-prod-warnings` + `#vulnerabilities` |
+| All other critical | `#<base>-stage` | `#<base>-prod-critical` |
+| All other warning | `#<base>-stage` | `#<base>-prod-warnings` |
+| `Watchdog` (heartbeat) | Silenced | Silenced |
+
+**Argo CD Notifications** route sync failures and health degradation:
+- Stage Argo CD → `#<base>-stage`
+- Prod Argo CD → `#<base>-prod-critical`
+
+### Configuration
+
+Each channel requires its own Slack incoming webhook URL. Webhook URLs are stored in the Ansible Vault (never in Git). To reconfigure:
+
+```bash
+platformforge init       # re-enter webhook URLs
+platformforge deploy     # applies updated Alertmanager config
+```
+
+### Existing PrometheusRule Alerts
+
+| Alert | Severity | Source |
+|---|---|---|
+| FalcoCriticalEventsHigh | critical | Falco |
+| FalcoDaemonSetUnavailable | warning | Falco |
+| FalcoNoEventsDetected | warning | Falco |
+| FalcoEventRateHigh | warning | Falco |
+| FalcoKernelDrops | warning | Falco |
+| CriticalVulnerabilityDetected | critical | Trivy Operator |
+| HighVulnerabilityThresholdExceeded | warning | Trivy Operator |
+| ClusterVulnerabilityCountHigh | warning | Trivy Operator |
+| TrivyOperatorNotScanning | warning | Trivy Operator |
+| CriticalMisconfigurationDetected | warning | Trivy Operator |
+
+### Grafana Dashboards
+
+Provisioned automatically via Grafana.com dashboard IDs:
+
+| Dashboard | ID | Content |
+|---|---|---|
+| Argo CD | 14584 | Application sync status, health, operation history |
+| Falco | 11914 | Security events by rule, severity, source |
+| Trivy Operator | 16337 | Vulnerability counts by severity, image, namespace |
+| Node Exporter Full | 1860 | CPU, memory, disk, network per node |
+
+Plus ~20 default Kubernetes dashboards (API server, kubelet, pod resources, etc.) enabled via kube-prometheus-stack defaults. Dashboards are in the **PlatformForge** folder in Grafana.
+
 ## CLI Reference
 
 | Command | Purpose |

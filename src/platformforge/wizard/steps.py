@@ -395,9 +395,15 @@ def _write_vault(project_root: Path, data: dict) -> None:
         pihole_primary_password=data.pop("_pihole_primary_password", ""),
         pihole_secondary_ip=data.pop("_pihole_secondary_ip", ""),
         pihole_secondary_password=data.pop("_pihole_secondary_password", ""),
-        slack_webhook_url=data.pop("_slack_webhook_url", ""),
+        slack_webhook_stage=data.pop("_slack_webhook_stage", ""),
+        slack_webhook_prod_critical=data.pop("_slack_webhook_prod_critical", ""),
+        slack_webhook_prod_warnings=data.pop("_slack_webhook_prod_warnings", ""),
+        slack_webhook_security=data.pop("_slack_webhook_security", ""),
+        slack_webhook_vulnerabilities=data.pop("_slack_webhook_vulnerabilities", ""),
         smtp_password=data.pop("_smtp_password", ""),
     )
+    # Clean up the base name helper (not a config key)
+    data.pop("_slack_base", None)
     save_secrets(project_root, secrets)
 
 
@@ -433,17 +439,64 @@ def _section_notifications(
 
     if choice == "1" or choice.lower() == "slack":
         data["notification_provider"] = "slack"
-        data["slack_channel"] = ask(
-            "Slack channel name (without #)",
-            default=saved.get("slack_channel", "platform-alerts"),
+
+        base = ask(
+            "Base channel name",
+            default=saved.get("_slack_base", "platform"),
         )
-        webhook = ask(
-            "Slack webhook URL",
-            default=existing.slack_webhook_url,
-            password=True,
-        )
-        # Store temporarily in data; _collect_secrets will move to vault
-        data["_slack_webhook_url"] = webhook
+        data["_slack_base"] = base  # not persisted, just for default computation
+
+        # Channel definitions with descriptions
+        channels = [
+            (
+                "stage",
+                f"{base}-stage",
+                "Stage alerts — receives ALL alerts (critical + warning) from\n"
+                "  the stage cluster. Useful for catching issues during testing.",
+            ),
+            (
+                "prod_critical",
+                f"{base}-prod-critical",
+                "Prod critical alerts — receives CRITICAL alerts from prod.\n"
+                "  Active failures: pods down, sync errors, security events.",
+            ),
+            (
+                "prod_warnings",
+                f"{base}-prod-warnings",
+                "Prod warnings — receives WARNING alerts from prod.\n"
+                "  Early indicators: high vulnerability counts, resource pressure, scan gaps.",
+            ),
+            (
+                "security",
+                "security",
+                "Security alerts — receives Falco runtime security alerts from\n"
+                "  BOTH clusters: shell-in-container, privilege escalation, crypto mining.",
+            ),
+            (
+                "vulnerabilities",
+                "vulnerabilities",
+                "Vulnerability alerts — receives Trivy vulnerability alerts from\n"
+                "  BOTH clusters: critical CVEs, high vulnerability thresholds, scan failures.",
+            ),
+        ]
+
+        for key, default_name, description in channels:
+            saved_name = saved.get(f"slack_channel_{key}", default_name)
+            console.print()
+            console.print(f"  [dim]{description}[/dim]")
+            name = ask(
+                f"  Channel name (without #)",
+                default=saved_name,
+            )
+            data[f"slack_channel_{key}"] = name
+
+            webhook = ask(
+                f"  Webhook URL for #{name}",
+                default=getattr(existing, f"slack_webhook_{key}", ""),
+                password=True,
+            )
+            data[f"_slack_webhook_{key}"] = webhook
+
         data["smtp_host"] = ""
         data["smtp_from"] = ""
         data["smtp_to"] = ""
@@ -468,11 +521,13 @@ def _section_notifications(
             password=True,
         )
         data["_smtp_password"] = smtp_pw
-        data["slack_channel"] = ""
+        for key in ("stage", "prod_critical", "prod_warnings", "security", "vulnerabilities"):
+            data[f"slack_channel_{key}"] = ""
 
     else:
         data["notification_provider"] = "none"
-        data["slack_channel"] = ""
+        for key in ("stage", "prod_critical", "prod_warnings", "security", "vulnerabilities"):
+            data[f"slack_channel_{key}"] = ""
         data["smtp_host"] = ""
         data["smtp_from"] = ""
         data["smtp_to"] = ""

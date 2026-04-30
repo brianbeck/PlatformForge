@@ -113,7 +113,11 @@ def save_config(config: EnvironmentConfig, path: Path) -> None:
     # Notifications section
     lines.append(_NOTIFICATIONS_BEGIN)
     lines.append(f'notification_provider: "{config.notification_provider}"')
-    lines.append(f'slack_channel: "{config.slack_channel}"')
+    lines.append(f'slack_channel_stage: "{config.slack_channel_stage}"')
+    lines.append(f'slack_channel_prod_critical: "{config.slack_channel_prod_critical}"')
+    lines.append(f'slack_channel_prod_warnings: "{config.slack_channel_prod_warnings}"')
+    lines.append(f'slack_channel_security: "{config.slack_channel_security}"')
+    lines.append(f'slack_channel_vulnerabilities: "{config.slack_channel_vulnerabilities}"')
     lines.append(f'smtp_host: "{config.smtp_host}"')
     lines.append(f'smtp_from: "{config.smtp_from}"')
     lines.append(f'smtp_to: "{config.smtp_to}"')
