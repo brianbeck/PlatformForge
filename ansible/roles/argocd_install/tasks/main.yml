@@ -600,23 +600,49 @@
     dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cluster-issuer.yaml"
     mode: "0644"
 
-- name: Template Alertmanager config (stage)
-  when: ingress_enabled | default(false) | bool and deploy_stage | bool
-  ansible.builtin.template:
-    src: observability/alertmanager-values.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/alertmanager-values.yaml"
-    mode: "0644"
-  vars:
-    env_name: stage
+- name: Apply Alertmanager config secret (stage)
+  when: notification_provider | default('none') != 'none' and deploy_stage | bool
+  block:
+    - name: Template Alertmanager secret (stage)
+      ansible.builtin.template:
+        src: observability/alertmanager-secret.yaml.j2
+        dest: /tmp/alertmanager-secret-stage.yaml
+        mode: "0600"
+      vars:
+        env_name: stage
+        monitoring_namespace: "{{ monitoring_stage_namespace | default('monitoring') }}"
 
-- name: Template Alertmanager config (prod)
-  when: ingress_enabled | default(false) | bool and deploy_prod | bool
-  ansible.builtin.template:
-    src: observability/alertmanager-values.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/alertmanager-values.yaml"
-    mode: "0644"
-  vars:
-    env_name: prod
+    - name: Apply Alertmanager secret (stage)
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/alertmanager-secret-stage.yaml"
+      changed_when: true
+
+    - name: Clean up Alertmanager secret file (stage)
+      ansible.builtin.file:
+        path: /tmp/alertmanager-secret-stage.yaml
+        state: absent
+
+- name: Apply Alertmanager config secret (prod)
+  when: notification_provider | default('none') != 'none' and multi_cluster | bool and deploy_prod | bool
+  block:
+    - name: Template Alertmanager secret (prod)
+      ansible.builtin.template:
+        src: observability/alertmanager-secret.yaml.j2
+        dest: /tmp/alertmanager-secret-prod.yaml
+        mode: "0600"
+      vars:
+        env_name: prod
+        monitoring_namespace: "{{ monitoring_prod_namespace | default('monitoring') }}"
+
+    - name: Apply Alertmanager secret (prod)
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/alertmanager-secret-prod.yaml"
+      changed_when: true
+
+    - name: Clean up Alertmanager secret file (prod)
+      ansible.builtin.file:
+        path: /tmp/alertmanager-secret-prod.yaml
+        state: absent
 
 - name: Template observability HTTPRoutes (stage)
   when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0 and deploy_stage | bool

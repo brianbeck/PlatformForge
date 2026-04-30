@@ -32,6 +32,7 @@ def run_wizard(project_root: Path) -> EnvironmentConfig:
     _section_ingress(project_root, saved, data)
     _section_notifications(project_root, saved, data)
     _section_secrets(saved, data)
+    _write_vault(project_root, data)
 
     config = EnvironmentConfig(**data)
     save_config(config, env_path(project_root))
@@ -311,10 +312,6 @@ def _collect_secrets(
 
     secrets = VaultSecrets()
 
-    # Carry forward notification secrets collected in _section_notifications
-    secrets.slack_webhook_url = data.pop("_slack_webhook_url", existing.slack_webhook_url)
-    secrets.smtp_password = data.pop("_smtp_password", existing.smtp_password)
-
     if ingress_enabled:
         # Cloudflare API token
         token = ask(
@@ -361,6 +358,19 @@ def _collect_secrets(
             data["pihole_primary_ip"] = ""
             data["pihole_secondary_ip"] = ""
 
+    # Store collected secrets in data for _write_vault to pick up
+    data["_cloudflare_api_token"] = secrets.cloudflare_api_token
+    data["_pihole_primary_ip"] = secrets.pihole_primary_ip
+    data["_pihole_primary_password"] = secrets.pihole_primary_password
+    data["_pihole_secondary_ip"] = secrets.pihole_secondary_ip
+    data["_pihole_secondary_password"] = secrets.pihole_secondary_password
+
+
+# ── Write Vault ────────────────────────────────────────────────────
+
+
+def _write_vault(project_root: Path, data: dict) -> None:
+    """Merge all collected secrets and write to vault."""
     # Vault password
     if not has_vault_pass(project_root):
         console.print()
@@ -379,6 +389,15 @@ def _collect_secrets(
             console.print("[red]Password cannot be empty.[/red]")
         write_vault_pass(project_root, pw)
 
+    secrets = VaultSecrets(
+        cloudflare_api_token=data.pop("_cloudflare_api_token", ""),
+        pihole_primary_ip=data.pop("_pihole_primary_ip", ""),
+        pihole_primary_password=data.pop("_pihole_primary_password", ""),
+        pihole_secondary_ip=data.pop("_pihole_secondary_ip", ""),
+        pihole_secondary_password=data.pop("_pihole_secondary_password", ""),
+        slack_webhook_url=data.pop("_slack_webhook_url", ""),
+        smtp_password=data.pop("_smtp_password", ""),
+    )
     save_secrets(project_root, secrets)
 
 

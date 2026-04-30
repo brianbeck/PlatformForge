@@ -4,6 +4,9 @@ dist/
 build/
 .pytest_cache/
 
+# Generated secrets (contain webhook URLs, applied directly to cluster)
+platform/observability/overlays/*/alertmanager-values.yaml
+
 # Ansible
 *.retry
 .vault_pass

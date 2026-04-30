@@ -58,7 +58,16 @@ alertmanager:
         cpu: 200m
         memory: 128Mi
 
-  # Default config -- override per environment with actual receivers
+    # Use a pre-created Secret for Alertmanager config.
+    # The Secret "alertmanager-config" is applied directly by
+    # `platformforge deploy` and contains the notification provider
+    # credentials (Slack webhook URL, SMTP password). This keeps
+    # secrets out of Git-tracked Helm values.
+    # If the Secret doesn't exist (notifications not configured),
+    # Alertmanager uses the fallback config below.
+    configSecret: alertmanager-config
+
+  # Fallback config — used when configSecret doesn't exist yet
   config:
     global:
       resolve_timeout: 5m
@@ -72,14 +81,8 @@ alertmanager:
         - receiver: "null"
           matchers:
             - alertname = "Watchdog"
-        - receiver: critical
-          matchers:
-            - severity = "critical"
-          continue: true
     receivers:
       - name: "null"
-      # Configure actual receivers per environment:
-      - name: critical
     inhibit_rules:
       - source_matchers:
           - severity = "critical"
