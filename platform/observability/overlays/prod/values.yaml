@@ -4,6 +4,7 @@ prometheus:
   prometheusSpec:
     retention: 30d
     scrapeInterval: 15s
+    scrapeTimeout: 10s
 
     resources:
       requests:
