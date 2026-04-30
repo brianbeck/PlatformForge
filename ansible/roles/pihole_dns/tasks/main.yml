@@ -32,7 +32,6 @@
   no_log: true
 
 # --- Build DNS record list ---
-# Traefik IPs were set by deploy_platform role
 
 - name: Build DNS records list
   ansible.builtin.set_fact:
@@ -52,7 +51,7 @@
         + ([{'hostname': rollouts_hostname_prod, 'ip': traefik_ip_prod}] if rollouts_hostname_prod | default('') | length > 0 else [])
       }}
 
-# --- Authenticate with primary Pi-hole (v6 API) ---
+# --- Register with primary Pi-hole ---
 
 - name: Authenticate with primary Pi-hole
   ansible.builtin.uri:
@@ -76,9 +75,20 @@
     pihole_primary_sid: "{{ pihole_primary_auth.json.session.sid }}"
   no_log: true
 
-# --- Register DNS records with primary Pi-hole ---
+- name: Get existing DNS records from primary Pi-hole
+  ansible.builtin.uri:
+    url: "http://{{ pihole_primary_ip }}/api/config/dns/hosts"
+    method: GET
+    headers:
+      sid: "{{ pihole_primary_sid }}"
+    status_code: [200]
+  register: pihole_primary_existing
 
-- name: Register DNS records with primary Pi-hole
+- name: Parse existing primary records
+  ansible.builtin.set_fact:
+    pihole_primary_hosts: "{{ pihole_primary_existing.json.config.dns.hosts | default([]) }}"
+
+- name: Register DNS records with primary Pi-hole (skip existing)
   ansible.builtin.uri:
     url: "http://{{ pihole_primary_ip }}/api/config/dns/hosts/{{ item.ip }}%20{{ item.hostname }}"
     method: PUT
@@ -88,10 +98,11 @@
   loop: "{{ dns_records }}"
   loop_control:
     label: "{{ item.hostname }} -> {{ item.ip }}"
+  when: (item.ip + ' ' + item.hostname) not in pihole_primary_hosts
   register: pihole_primary_result
   failed_when: false
 
-# --- Authenticate and register with secondary Pi-hole ---
+# --- Register with secondary Pi-hole ---
 
 - name: Authenticate with secondary Pi-hole
   when: pihole_secondary_ip | length > 0 and pihole_secondary_password | length > 0
@@ -111,8 +122,23 @@
     pihole_secondary_sid: "{{ pihole_secondary_auth.json.session.sid }}"
   no_log: true
 
-- name: Register DNS records with secondary Pi-hole
+- name: Get existing DNS records from secondary Pi-hole
   when: pihole_secondary_ip | length > 0 and pihole_secondary_password | length > 0
+  ansible.builtin.uri:
+    url: "http://{{ pihole_secondary_ip }}/api/config/dns/hosts"
+    method: GET
+    headers:
+      sid: "{{ pihole_secondary_sid }}"
+    status_code: [200]
+  register: pihole_secondary_existing
+
+- name: Parse existing secondary records
+  when: pihole_secondary_ip | length > 0 and pihole_secondary_password | length > 0
+  ansible.builtin.set_fact:
+    pihole_secondary_hosts: "{{ pihole_secondary_existing.json.config.dns.hosts | default([]) }}"
+
+- name: Register DNS records with secondary Pi-hole (skip existing)
+  when: pihole_secondary_ip | length > 0 and pihole_secondary_password | length > 0 and (item.ip + ' ' + item.hostname) not in (pihole_secondary_hosts | default([]))
   ansible.builtin.uri:
     url: "http://{{ pihole_secondary_ip }}/api/config/dns/hosts/{{ item.ip }}%20{{ item.hostname }}"
     method: PUT
