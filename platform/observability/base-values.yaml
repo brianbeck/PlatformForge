@@ -45,6 +45,29 @@ prometheus:
   service:
     type: ClusterIP
 
+# --- Component monitoring ---
+# kube-prometheus-stack expects Services in kube-system for scraping
+# control plane components. Some may not exist depending on the CNI
+# or cluster provisioner (ClusterForge, kubeadm, etc.).
+#
+# etcd, kube-controller-manager, kube-scheduler: running as static
+# pods but may lack a Service for Prometheus discovery. If alerts
+# fire (etcdInsufficientMembers, etc.), create the missing Service
+# in ClusterForge, or disable here as a workaround.
+#
+# kube-proxy: disabled if the cluster uses a CNI that replaces it
+# (e.g., Cilium in kube-proxy replacement mode).
+# TODO: Create headless Services in ClusterForge for etcd, kube-controller-manager,
+# and kube-scheduler so Prometheus can scrape them. Then re-enable these.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
 # --- Alertmanager ---
 alertmanager:
   enabled: true

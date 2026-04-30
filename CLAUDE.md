@@ -201,6 +201,12 @@ README troubleshooting section covers 4 scenarios. Production runbooks should co
 
 ### Existing TODOs
 
+**ClusterForge: control plane metrics Services**
+etcd, kube-controller-manager, and kube-scheduler run as static pods but lack headless
+Services for Prometheus discovery. Create Services in ClusterForge exposing metrics ports
+(etcd: 2381, controller-manager: 10257, scheduler: 10259), then re-enable monitoring in
+`platform/observability/base-values.yaml` (`kubeEtcd`, `kubeControllerManager`, `kubeScheduler`).
+
 **Generic webhook notification provider**
 Add a third notification provider option (`webhook`) to `platformforge init` alongside Slack and Email.
 Configures Argo CD `service.webhook.generic` and Alertmanager `webhook_configs` receiver with a user-provided URL.
