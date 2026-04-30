@@ -113,33 +113,18 @@ pip install -e .
 ### 2. Create your environment repo
 
 ```bash
-# Create the private env repo alongside PlatformForge
-cd ..
-mkdir platformforge-env && cd platformforge-env
+# Scaffold the env repo directory structure
+platformforge scaffold
+
+# Follow the printed instructions:
+cd ../platformforge-env
 git init
-
-# Create the directory structure
-mkdir -p vault argocd/root argocd/waves-stage argocd/waves-prod
-for svc in traefik observability cert-manager gatekeeper falco sealed-secrets external-secrets trivy-operator argo-rollouts; do
-  mkdir -p overlays/$svc/stage overlays/$svc/prod
-done
-mkdir -p overlays/argo-rollouts/stage/manifests overlays/argo-rollouts/prod/manifests
-
-# Create .gitignore
-cat > .gitignore << 'EOF'
-.vault_pass
-vault-password.txt
-*.retry
-__pycache__/
-*.pyc
-.DS_Store
-EOF
-
-# Initial commit and push to your private repo
 git add -A
 git commit -m "Initial platformforge-env structure"
 gh repo create YOUR_ORG/platformforge-env --private --source=. --push
 ```
+
+Use `platformforge scaffold --path /custom/path` to create it elsewhere.
 
 ### 3. Configure
 
@@ -355,6 +340,7 @@ Plus ~20 default Kubernetes dashboards (API server, kubelet, pod resources, etc.
 
 | Command | Purpose |
 |---|---|
+| `platformforge scaffold` | Create the platformforge-env directory structure |
 | `platformforge init` | Interactive bootstrap wizard (replaces `bootstrap.yml`) |
 | `platformforge deploy` | Install Argo CD, deploy platform via ApplicationSets |
 | `platformforge status` | Verify all services across clusters |
