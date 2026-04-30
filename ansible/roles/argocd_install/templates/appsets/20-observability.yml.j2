@@ -36,6 +36,9 @@ spec:
               - "$env/overlays/observability/{{ '{{env}}' }}/values.yaml"
               - $platform/platform/observability/dashboards/dashboards-values.yaml
               - "$env/overlays/observability/{{ '{{env}}' }}/alertmanager-url-values.yaml"
+{% if loki_url | default('') | length > 0 %}
+              - "$env/overlays/observability/{{ '{{env}}' }}/loki-datasource-values.yaml"
+{% endif %}
             skipCrds: false
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}

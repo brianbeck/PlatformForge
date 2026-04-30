@@ -47,6 +47,12 @@ def print_config_table(config: EnvironmentConfig) -> None:
             table.add_row("Secondary Pi-hole", config.pihole_secondary_ip)
 
     table.add_section()
+    if config.loki_url:
+        table.add_row("Loki URL", config.loki_url)
+    else:
+        table.add_row("Logging", "disabled")
+
+    table.add_section()
     table.add_row("Notifications", config.notification_provider)
     if config.notification_provider == "slack":
         table.add_row("Stage Alerts", f"#{config.slack_channel_stage}")

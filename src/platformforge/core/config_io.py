@@ -155,6 +155,11 @@ def save_config(config: EnvironmentConfig, path: Path) -> None:
     lines.append(f'pihole_secondary_ip: "{config.pihole_secondary_ip}"')
     lines.append(_INGRESS_END)
 
+    # Logging section
+    lines.append("# BEGIN LOGGING CONFIGURATION")
+    lines.append(f'loki_url: "{config.loki_url}"')
+    lines.append("# END LOGGING CONFIGURATION")
+
     # Notifications section
     lines.append(_NOTIFICATIONS_BEGIN)
     lines.append(f'notification_provider: "{config.notification_provider}"')

@@ -24,3 +24,6 @@ gatekeeper_namespace: gatekeeper-system
 
 # Argo Rollouts (progressive delivery)
 argo_rollouts_chart_version: "2.40.9"
+
+# Grafana Alloy (log shipping)
+alloy_chart_version: "1.8.0"

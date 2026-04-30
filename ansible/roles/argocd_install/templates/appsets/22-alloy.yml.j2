@@ -1,0 +1,59 @@
+# Grafana Alloy - Singleton DaemonSet (one per cluster)
+# Collects container logs and ships to external Loki.
+# Wave 22: after observability (20) so Grafana exists for the datasource.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: alloy
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+{% for entry in singleton_envs %}
+          - env: "{{ entry.env }}"
+            project: "{{ entry.project }}"
+{% endfor %}
+  template:
+    metadata:
+      name: "alloy-{{ '{{env}}' }}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: alloy
+      annotations:
+        argocd.argoproj.io/sync-wave: "22"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{ '{{project}}' }}"
+      sources:
+        - repoURL: https://grafana.github.io/helm-charts
+          chart: alloy
+          targetRevision: "{{ alloy_chart_version }}"
+          helm:
+            valueFiles:
+              - $platform/platform/alloy/base-values.yaml
+              - "$env/overlays/alloy/{{ '{{env}}' }}/values.yaml"
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: alloy
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

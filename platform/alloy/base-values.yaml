@@ -1,0 +1,72 @@
+# Grafana Alloy base Helm values
+# DaemonSet that collects container logs from all nodes and ships them
+# to an external Loki instance. The Loki URL is set via LOKI_URL env var
+# in the environment overlay values (platformforge-env).
+
+alloy:
+  configMap:
+    create: true
+    content: |-
+      // Discover all pods on this node
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Extract useful labels from pod metadata
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+      }
+
+      // Collect logs from discovered pods
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.external.receiver]
+      }
+
+      // Ship logs to external Loki
+      loki.write "external" {
+        endpoint {
+          url = env("LOKI_URL") + "/loki/api/v1/push"
+        }
+      }
+
+  # Extra env vars — LOKI_URL is set in the env overlay
+  extraEnv: []
+
+# DaemonSet controller (one pod per node)
+controller:
+  type: daemonset
+
+# Resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# ServiceMonitor for Prometheus scraping
+serviceMonitor:
+  enabled: true

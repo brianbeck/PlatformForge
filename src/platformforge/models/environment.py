@@ -52,6 +52,9 @@ class EnvironmentConfig(BaseModel):
     pihole_primary_ip: str = ""
     pihole_secondary_ip: str = ""
 
+    # Logging
+    loki_url: str = ""
+
     # Notifications
     notification_provider: Literal["slack", "email", "none"] = "none"
     slack_channel_stage: str = ""

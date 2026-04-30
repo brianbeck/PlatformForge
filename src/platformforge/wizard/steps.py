@@ -31,6 +31,7 @@ def run_wizard(project_root: Path) -> EnvironmentConfig:
     _section_repo(project_root, env_root, saved, data)
     _section_environment(saved, data)
     _section_ingress(env_root, saved, data)
+    _section_logging(saved, data)
     _section_notifications(env_root, saved, data)
     _section_secrets(saved, data)
     _write_vault(env_root, data)
@@ -463,7 +464,28 @@ def _write_vault(env_root: Path, data: dict) -> None:
     save_secrets(env_root, secrets)
 
 
-# ── Section 4: Notifications ───────────────────────────────────────
+# ── Section 4: Logging ─────────────────────────────────────────────
+
+
+def _section_logging(saved: dict, data: dict) -> None:
+    console.print()
+    console.print(Panel("[bold]Logging[/bold]", border_style="blue"))
+
+    console.print(
+        "  [dim]PlatformForge ships container logs to an external Loki\n"
+        "  instance via Grafana Alloy. Enter the full URL with port.\n"
+        "  Leave blank to skip (Alloy will not be deployed).[/dim]"
+    )
+    console.print()
+
+    loki_url = ask(
+        "Loki URL (e.g. http://loki.example.com:3100)",
+        default=saved.get("loki_url", ""),
+    )
+    data["loki_url"] = loki_url
+
+
+# ── Section 5: Notifications ──────────────────────────────────────
 
 
 def _section_notifications(

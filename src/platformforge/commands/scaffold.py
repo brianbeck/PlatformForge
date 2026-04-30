@@ -13,6 +13,7 @@ from platformforge.ui.console import console
 SERVICES = [
     "traefik",
     "observability",
+    "alloy",
     "cert-manager",
     "gatekeeper",
     "falco",

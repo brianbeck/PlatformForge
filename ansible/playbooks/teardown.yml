@@ -144,6 +144,7 @@
         - external-secrets
         - cert-manager
         - argo-rollouts
+        - alloy
       changed_when: false
       failed_when: false
 
@@ -173,6 +174,7 @@
         - external-secrets
         - cert-manager
         - argo-rollouts
+        - alloy
       changed_when: false
       failed_when: false
 
@@ -261,6 +263,7 @@
         - external-secrets
         - cert-manager
         - argo-rollouts
+        - alloy
       changed_when: false
       failed_when: false
 
@@ -290,6 +293,7 @@
         - external-secrets
         - cert-manager
         - argo-rollouts
+        - alloy
       changed_when: false
       failed_when: false
 
