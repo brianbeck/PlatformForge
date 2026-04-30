@@ -73,7 +73,7 @@ spec:
     - alertmanager-prod.brianbeck.net
   rules:
     - backendRefs:
-        - name: observability-prod-kube-p-alertmanager
+        - name: alertmanager-operated
           port: 9093
 ---
 apiVersion: cert-manager.io/v1

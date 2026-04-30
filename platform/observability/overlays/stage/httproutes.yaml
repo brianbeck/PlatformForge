@@ -73,7 +73,7 @@ spec:
     - alertmanager-stage.brianbeck.net
   rules:
     - backendRefs:
-        - name: observability-stage-kube-p-alertmanager
+        - name: alertmanager-operated
           port: 9093
 ---
 apiVersion: cert-manager.io/v1
