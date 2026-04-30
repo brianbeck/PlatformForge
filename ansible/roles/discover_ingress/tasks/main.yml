@@ -96,7 +96,7 @@
       Press Enter to use: {{ fqdn_default }}
       {% endif %}
 
-      Enter the base domain for service hostnames (e.g. brianbeck.net)
+      Enter the base domain for service hostnames (e.g. example.com)
   register: fqdn_input
 
 - name: Set FQDN fact
@@ -226,12 +226,12 @@
 
 - name: Check for existing vault secrets file
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../vault/secrets.yml"
+    path: "{{ env_repo_path }}/vault/secrets.yml"
   register: vault_file
 
 - name: Check for existing vault password file
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../.vault_pass"
+    path: "{{ env_repo_path }}/vault/.vault_pass"
   register: vault_pass_exists
 
 - name: Decrypt existing vault secrets
@@ -239,9 +239,9 @@
   ansible.builtin.command:
     cmd: >-
       ansible-vault decrypt
-      --vault-password-file {{ playbook_dir }}/../.vault_pass
+      --vault-password-file {{ env_repo_path }}/vault/.vault_pass
       --output -
-      {{ playbook_dir }}/../vault/secrets.yml
+      {{ env_repo_path }}/vault/secrets.yml
   register: vault_decrypt_early
   changed_when: false
   failed_when: false
@@ -366,7 +366,7 @@
 
 - name: Check for vault password file
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../.vault_pass"
+    path: "{{ env_repo_path }}/vault/.vault_pass"
   register: vault_pass_file
 
 - name: Create vault password file if not exists
@@ -389,21 +389,21 @@
     - name: Write vault password file
       ansible.builtin.copy:
         content: "{{ vault_pass_input.user_input }}"
-        dest: "{{ playbook_dir }}/../.vault_pass"
+        dest: "{{ env_repo_path }}/vault/.vault_pass"
         mode: "0600"
 
 - name: Write secrets to vault file
   ansible.builtin.copy:
     content: "{{ {'cloudflare_api_token': cloudflare_api_token | default(''), 'pihole_primary_ip': pihole_primary_ip | default(''), 'pihole_primary_password': pihole_primary_password | default(''), 'pihole_secondary_ip': pihole_secondary_ip | default(''), 'pihole_secondary_password': pihole_secondary_password | default('')} | to_nice_yaml }}"
-    dest: "{{ playbook_dir }}/../vault/secrets.yml"
+    dest: "{{ env_repo_path }}/vault/secrets.yml"
     mode: "0600"
 
 - name: Encrypt vault file
   ansible.builtin.command:
     cmd: >-
       ansible-vault encrypt
-      --vault-password-file {{ playbook_dir }}/../.vault_pass
-      {{ playbook_dir }}/../vault/secrets.yml
+      --vault-password-file {{ env_repo_path }}/vault/.vault_pass
+      {{ env_repo_path }}/vault/secrets.yml
   changed_when: true
   failed_when: false
 

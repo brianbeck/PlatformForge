@@ -101,9 +101,9 @@
       ansible.builtin.command:
         cmd: >-
           ansible-vault decrypt
-          --vault-password-file {{ playbook_dir }}/../.vault_pass
+          --vault-password-file {{ env_repo_path }}/vault/.vault_pass
           --output -
-          {{ playbook_dir }}/../vault/secrets.yml
+          {{ env_repo_path }}/vault/secrets.yml
       register: vault_for_notify
       changed_when: false
       no_log: true
@@ -240,7 +240,7 @@
 - name: Template AppProjects to argocd/root/
   ansible.builtin.template:
     src: "{{ item.src }}"
-    dest: "{{ playbook_dir }}/../../argocd/root/{{ item.dest }}"
+    dest: "{{ env_repo_path }}/argocd/root/{{ item.dest }}"
     mode: "0644"
   loop:
     - { src: "project-stage.yml.j2", dest: "platform-project-stage.yml" }
@@ -269,12 +269,12 @@
     path: "{{ item.0 }}/{{ item.1.dest | dirname }}"
     state: directory
     mode: "0755"
-  loop: "{{ [playbook_dir + '/../../argocd/waves-stage', playbook_dir + '/../../argocd/waves-prod'] | product(appset_waves) | list }}"
+  loop: "{{ [env_repo_path + '/argocd/waves-stage', env_repo_path + '/argocd/waves-prod'] | product(appset_waves) | list }}"
 
 - name: Template stage ApplicationSets to argocd/waves-stage/
   ansible.builtin.template:
     src: "appsets/{{ item.src }}"
-    dest: "{{ playbook_dir }}/../../argocd/waves-stage/{{ item.dest }}"
+    dest: "{{ env_repo_path }}/argocd/waves-stage/{{ item.dest }}"
     mode: "0644"
   vars:
     singleton_envs: "{{ stage_singleton_envs }}"
@@ -285,7 +285,7 @@
 - name: Template prod ApplicationSets to argocd/waves-prod/
   ansible.builtin.template:
     src: "appsets/{{ item.src }}"
-    dest: "{{ playbook_dir }}/../../argocd/waves-prod/{{ item.dest }}"
+    dest: "{{ env_repo_path }}/argocd/waves-prod/{{ item.dest }}"
     mode: "0644"
   vars:
     singleton_envs: "{{ prod_singleton_envs | default(stage_singleton_envs) }}"
@@ -300,28 +300,28 @@
 - name: Apply stage AppProjects
   when: deploy_stage | bool
   ansible.builtin.command:
-    cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
+    cmd: "kubectl --context {{ stage_context }} apply -f {{ env_repo_path }}/argocd/root/"
   register: result
   changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
 - name: Apply stage ApplicationSets
   when: deploy_stage | bool
   ansible.builtin.shell:
-    cmd: "find {{ playbook_dir }}/../../argocd/waves-stage/ -name '*.yml' -exec kubectl --context {{ stage_context }} apply -f {} \\;"
+    cmd: "find {{ env_repo_path }}/argocd/waves-stage/ -name '*.yml' -exec kubectl --context {{ stage_context }} apply -f {} \\;"
   register: result
   changed_when: true
 
 - name: Apply prod AppProjects
   when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.command:
-    cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../argocd/root/"
+    cmd: "kubectl --context {{ prod_context }} apply -f {{ env_repo_path }}/argocd/root/"
   register: result
   changed_when: "'configured' in result.stdout or 'created' in result.stdout"
 
 - name: Apply prod ApplicationSets
   when: multi_cluster | bool and deploy_prod | bool
   ansible.builtin.shell:
-    cmd: "find {{ playbook_dir }}/../../argocd/waves-prod/ -name '*.yml' -exec kubectl --context {{ prod_context }} apply -f {} \\;"
+    cmd: "find {{ env_repo_path }}/argocd/waves-prod/ -name '*.yml' -exec kubectl --context {{ prod_context }} apply -f {} \\;"
   register: result
   changed_when: true
 
@@ -364,9 +364,9 @@
   ansible.builtin.command:
     cmd: >-
       ansible-vault decrypt
-      --vault-password-file {{ playbook_dir }}/../.vault_pass
+      --vault-password-file {{ env_repo_path }}/vault/.vault_pass
       --output -
-      {{ playbook_dir }}/../vault/secrets.yml
+      {{ env_repo_path }}/vault/secrets.yml
   register: vault_for_cf
   changed_when: false
   no_log: true
@@ -379,7 +379,7 @@
 
 - name: Check if stage sealed secret already exists
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cloudflare-sealed-secret.yaml"
+    path: "{{ env_repo_path }}/overlays/cert-manager/stage/cloudflare-sealed-secret.yaml"
   register: stage_sealed_secret_file
 
 - name: Create and seal Cloudflare secret (stage)
@@ -432,17 +432,17 @@
     - name: Write sealed secret for stage
       ansible.builtin.copy:
         content: "{{ sealed_stage.stdout }}"
-        dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cloudflare-sealed-secret.yaml"
+        dest: "{{ env_repo_path }}/overlays/cert-manager/stage/cloudflare-sealed-secret.yaml"
         mode: "0644"
 
     - name: Apply sealed secret to stage
       ansible.builtin.command:
-        cmd: "kubectl --context {{ stage_context }} apply -f {{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cloudflare-sealed-secret.yaml"
+        cmd: "kubectl --context {{ stage_context }} apply -f {{ env_repo_path }}/overlays/cert-manager/stage/cloudflare-sealed-secret.yaml"
       changed_when: true
 
 - name: Check if prod sealed secret already exists
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cloudflare-sealed-secret.yaml"
+    path: "{{ env_repo_path }}/overlays/cert-manager/prod/cloudflare-sealed-secret.yaml"
   register: prod_sealed_secret_file
 
 - name: Create and seal Cloudflare secret (prod)
@@ -480,12 +480,12 @@
     - name: Write sealed secret for prod
       ansible.builtin.copy:
         content: "{{ sealed_prod.stdout }}"
-        dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cloudflare-sealed-secret.yaml"
+        dest: "{{ env_repo_path }}/overlays/cert-manager/prod/cloudflare-sealed-secret.yaml"
         mode: "0644"
 
     - name: Apply sealed secret to prod
       ansible.builtin.command:
-        cmd: "kubectl --context {{ prod_context }} apply -f {{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cloudflare-sealed-secret.yaml"
+        cmd: "kubectl --context {{ prod_context }} apply -f {{ env_repo_path }}/overlays/cert-manager/prod/cloudflare-sealed-secret.yaml"
       changed_when: true
 
 - name: Clean up plaintext secret
@@ -598,14 +598,14 @@
   when: ingress_enabled | default(false) | bool
   ansible.builtin.template:
     src: cert-manager/cluster-issuer.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/stage/cluster-issuer.yaml"
+    dest: "{{ env_repo_path }}/overlays/cert-manager/stage/cluster-issuer.yaml"
     mode: "0644"
 
 - name: Template cert-manager ClusterIssuer (prod)
   when: ingress_enabled | default(false) | bool
   ansible.builtin.template:
     src: cert-manager/cluster-issuer.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/cert-manager/overlays/prod/cluster-issuer.yaml"
+    dest: "{{ env_repo_path }}/overlays/cert-manager/prod/cluster-issuer.yaml"
     mode: "0644"
 
 - name: Apply Alertmanager config secret (stage)
@@ -656,7 +656,7 @@
   when: ingress_enabled | default(false) | bool and grafana_hostname_stage | default('') | length > 0 and deploy_stage | bool
   ansible.builtin.template:
     src: observability/httproutes.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/httproutes.yaml"
+    dest: "{{ env_repo_path }}/overlays/observability/stage/httproutes.yaml"
     mode: "0644"
   vars:
     grafana_hostname: "{{ grafana_hostname_stage }}"
@@ -668,7 +668,7 @@
   when: ingress_enabled | default(false) | bool and alertmanager_hostname_stage | default('') | length > 0 and deploy_stage | bool
   ansible.builtin.template:
     src: observability/alertmanager-url-values.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/stage/alertmanager-url-values.yaml"
+    dest: "{{ env_repo_path }}/overlays/observability/stage/alertmanager-url-values.yaml"
     mode: "0644"
   vars:
     alertmanager_hostname: "{{ alertmanager_hostname_stage }}"
@@ -677,7 +677,7 @@
   when: ingress_enabled | default(false) | bool and grafana_hostname_prod | default('') | length > 0 and deploy_prod | bool
   ansible.builtin.template:
     src: observability/httproutes.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/httproutes.yaml"
+    dest: "{{ env_repo_path }}/overlays/observability/prod/httproutes.yaml"
     mode: "0644"
   vars:
     grafana_hostname: "{{ grafana_hostname_prod }}"
@@ -689,7 +689,7 @@
   when: ingress_enabled | default(false) | bool and alertmanager_hostname_prod | default('') | length > 0 and deploy_prod | bool
   ansible.builtin.template:
     src: observability/alertmanager-url-values.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/observability/overlays/prod/alertmanager-url-values.yaml"
+    dest: "{{ env_repo_path }}/overlays/observability/prod/alertmanager-url-values.yaml"
     mode: "0644"
   vars:
     alertmanager_hostname: "{{ alertmanager_hostname_prod }}"
@@ -697,7 +697,7 @@
 - name: Ensure Argo Rollouts overlay directories exist
   when: ingress_enabled | default(false) | bool
   ansible.builtin.file:
-    path: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/{{ item }}/manifests"
+    path: "{{ env_repo_path }}/overlays/argo-rollouts/{{ item }}/manifests"
     state: directory
     mode: "0755"
   loop:
@@ -708,7 +708,7 @@
   when: ingress_enabled | default(false) | bool and rollouts_hostname_stage | default('') | length > 0 and deploy_stage | bool
   ansible.builtin.template:
     src: argo-rollouts/httproute.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/stage/manifests/httproute.yaml"
+    dest: "{{ env_repo_path }}/overlays/argo-rollouts/stage/manifests/httproute.yaml"
     mode: "0644"
   vars:
     rollouts_hostname: "{{ rollouts_hostname_stage }}"
@@ -718,7 +718,7 @@
   when: ingress_enabled | default(false) | bool and rollouts_hostname_prod | default('') | length > 0 and deploy_prod | bool
   ansible.builtin.template:
     src: argo-rollouts/httproute.yaml.j2
-    dest: "{{ playbook_dir }}/../../platform/argo-rollouts/overlays/prod/manifests/httproute.yaml"
+    dest: "{{ env_repo_path }}/overlays/argo-rollouts/prod/manifests/httproute.yaml"
     mode: "0644"
   vars:
     rollouts_hostname: "{{ rollouts_hostname_prod }}"

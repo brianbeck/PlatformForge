@@ -19,7 +19,7 @@
   pre_tasks:
     - name: Load environment configuration
       ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../environments.yml"
+        file: "{{ env_repo_path }}/environments.yml"
 
     - name: Verify required tools
       ansible.builtin.command:

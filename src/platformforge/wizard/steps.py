@@ -7,7 +7,7 @@ from pathlib import Path
 from rich.panel import Panel
 
 from platformforge.core import kubectl, validation
-from platformforge.core.config_io import env_path, load_raw, save_config
+from platformforge.core.config_io import env_path, find_env_root, load_raw, save_config
 from platformforge.core.vault import (
     has_vault_pass,
     load_secrets,
@@ -23,19 +23,20 @@ from platformforge.wizard.prompts import ask, ask_confirm
 
 def run_wizard(project_root: Path) -> EnvironmentConfig:
     """Run the full init wizard and return the validated config."""
-    saved = load_raw(env_path(project_root))
+    env_root = find_env_root()
+    saved = load_raw(env_path(env_root))
 
     data: dict = {}
 
-    _section_repo(project_root, saved, data)
+    _section_repo(project_root, env_root, saved, data)
     _section_environment(saved, data)
-    _section_ingress(project_root, saved, data)
-    _section_notifications(project_root, saved, data)
+    _section_ingress(env_root, saved, data)
+    _section_notifications(env_root, saved, data)
     _section_secrets(saved, data)
-    _write_vault(project_root, data)
+    _write_vault(env_root, data)
 
     config = EnvironmentConfig(**data)
-    save_config(config, env_path(project_root))
+    save_config(config, env_path(env_root))
 
     console.print()
     print_config_table(config)
@@ -50,6 +51,7 @@ def run_wizard(project_root: Path) -> EnvironmentConfig:
 
 def _section_repo(
     project_root: Path,
+    env_root: Path,
     saved: dict,
     data: dict,
 ) -> None:
@@ -68,10 +70,10 @@ def _section_repo(
         console.print("Install them and re-run [cyan]platformforge init[/cyan].")
         raise SystemExit(1)
 
-    # Git repo URL
+    # PlatformForge repo URL (public — base values, policies, CLI)
     default_url = saved.get("platformforge_repo_url", "")
     while True:
-        url = ask("Git repository URL", default=default_url)
+        url = ask("PlatformForge repo URL (public)", default=default_url)
         if not url:
             console.print("[red]URL is required.[/red]")
             continue
@@ -80,12 +82,30 @@ def _section_repo(
             console.print("[green]OK[/green]")
             break
         console.print("[red]unreachable[/red]")
-        default_url = url  # keep their input for retry
+        default_url = url
 
     data["platformforge_repo_url"] = url
     data["platformforge_repo_revision"] = saved.get(
         "platformforge_repo_revision", "main"
     )
+
+    # Env config repo URL (private — overlays, secrets, ApplicationSets)
+    default_env_url = saved.get("env_repo_url", "")
+    while True:
+        env_url = ask("Env config repo URL (private)", default=default_env_url)
+        if not env_url:
+            console.print("[red]URL is required.[/red]")
+            continue
+        console.print(f"  Validating [cyan]{env_url}[/cyan]...", end=" ")
+        if validation.validate_git_repo(env_url):
+            console.print("[green]OK[/green]")
+            break
+        console.print("[red]unreachable[/red]")
+        default_env_url = env_url
+
+    data["env_repo_url"] = env_url
+    data["env_repo_revision"] = saved.get("env_repo_revision", "main")
+    data["env_repo_path"] = str(env_root)
 
 
 # ── Section 2: Environment Model + Contexts ────────────────────────
@@ -158,7 +178,7 @@ def _prompt_context(label: str, contexts: list[str], default: str) -> str:
 
 
 def _section_ingress(
-    project_root: Path,
+    env_root: Path,
     saved: dict,
     data: dict,
 ) -> None:
@@ -174,7 +194,7 @@ def _section_ingress(
 
     if not traefik:
         _set_ingress_disabled(data)
-        _collect_secrets(project_root, saved, data, ingress_enabled=False)
+        _collect_secrets(env_root, saved, data, ingress_enabled=False)
         return
 
     # Admin email
@@ -197,7 +217,7 @@ def _section_ingress(
     _collect_hostnames(saved, data, fqdn)
 
     # Secrets (Cloudflare + Pi-hole)
-    _collect_secrets(project_root, saved, data, ingress_enabled=True)
+    _collect_secrets(env_root, saved, data, ingress_enabled=True)
 
 
 def _set_ingress_disabled(data: dict) -> None:
@@ -312,7 +332,7 @@ def _collect_hostnames(saved: dict, data: dict, fqdn: str) -> None:
 
 
 def _collect_secrets(
-    project_root: Path,
+    env_root: Path,
     saved: dict,
     data: dict,
     *,
@@ -322,7 +342,7 @@ def _collect_secrets(
     # Load existing secrets from vault
     existing = VaultSecrets()
     try:
-        loaded = load_secrets(project_root)
+        loaded = load_secrets(env_root)
         if loaded:
             existing = loaded
     except Exception:
@@ -387,10 +407,10 @@ def _collect_secrets(
 # ── Write Vault ────────────────────────────────────────────────────
 
 
-def _write_vault(project_root: Path, data: dict) -> None:
+def _write_vault(env_root: Path, data: dict) -> None:
     """Merge all collected secrets and write to vault."""
     # Vault password
-    if not has_vault_pass(project_root):
+    if not has_vault_pass(env_root):
         console.print()
         console.print(
             Panel(
@@ -405,7 +425,7 @@ def _write_vault(project_root: Path, data: dict) -> None:
             if pw:
                 break
             console.print("[red]Password cannot be empty.[/red]")
-        write_vault_pass(project_root, pw)
+        write_vault_pass(env_root, pw)
 
     secrets = VaultSecrets(
         cloudflare_api_token=data.pop("_cloudflare_api_token", ""),
@@ -422,14 +442,14 @@ def _write_vault(project_root: Path, data: dict) -> None:
     )
     # Clean up the base name helper (not a config key)
     data.pop("_slack_base", None)
-    save_secrets(project_root, secrets)
+    save_secrets(env_root, secrets)
 
 
 # ── Section 4: Notifications ───────────────────────────────────────
 
 
 def _section_notifications(
-    project_root: Path,
+    env_root: Path,
     saved: dict,
     data: dict,
 ) -> None:
@@ -439,7 +459,7 @@ def _section_notifications(
     # Load existing secrets for defaults
     existing = VaultSecrets()
     try:
-        loaded = load_secrets(project_root)
+        loaded = load_secrets(env_root)
         if loaded:
             existing = loaded
     except Exception:

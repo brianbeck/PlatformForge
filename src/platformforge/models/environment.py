@@ -26,6 +26,9 @@ class EnvironmentConfig(BaseModel):
     prod_server: str = ""
     platformforge_repo_url: str
     platformforge_repo_revision: str = "main"
+    env_repo_url: str = ""
+    env_repo_revision: str = "main"
+    env_repo_path: str = ""
 
     # Ingress
     ingress_enabled: bool = False

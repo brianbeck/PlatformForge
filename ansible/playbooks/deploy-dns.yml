@@ -16,7 +16,7 @@
   pre_tasks:
     - name: Load environment configuration
       ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../environments.yml"
+        file: "{{ env_repo_path }}/environments.yml"
 
     - name: Skip if Pi-hole not enabled
       when: not (pihole_enabled | default(false) | bool)

@@ -1,6 +1,6 @@
 # Argo Rollouts - Singleton (one per cluster)
 # Deploys the controller + dashboard via Helm chart, plus RBAC manifests
-# for the Traefik traffic router plugin and DevExForge integration.
+# for the Gateway API traffic router plugin and DevExForge integration.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -33,11 +33,14 @@ spec:
           targetRevision: "{{ argo_rollouts_chart_version }}"
           helm:
             valueFiles:
-              - $values/platform/argo-rollouts/base-values.yaml
-              - "$values/platform/argo-rollouts/overlays/{{ '{{env}}' }}/values.yaml"
+              - $platform/platform/argo-rollouts/base-values.yaml
+              - "$env/overlays/argo-rollouts/{{ '{{env}}' }}/values.yaml"
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}
-          ref: values
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
       destination:
         server: https://kubernetes.default.svc
         namespace: argo-rollouts
@@ -56,7 +59,8 @@ spec:
             maxDuration: 5m
 ---
 # Argo Rollouts RBAC - sibling app deploying static manifests from
-# platform/argo-rollouts/rbac/ (Traefik perms + DevExForge binding).
+# platform/argo-rollouts/rbac/ (Gateway API perms + DevExForge binding).
+# These are generic (not env-specific) so they stay in PlatformForge.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -103,9 +107,8 @@ spec:
             factor: 2
             maxDuration: 5m
 ---
-# Argo Rollouts env overlay (dashboard IngressRoute + Certificate).
-# Path is env-templated so stage IngressRoutes only land on the stage
-# Argo CD and prod on prod.
+# Argo Rollouts env overlay (dashboard HTTPRoute + Certificate).
+# Path is env-templated so stage routes only land on stage Argo CD.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -131,9 +134,9 @@ spec:
     spec:
       project: "{{ '{{project}}' }}"
       source:
-        repoURL: {{ platformforge_repo_url }}
-        targetRevision: {{ platformforge_repo_revision }}
-        path: "platform/argo-rollouts/overlays/{{ '{{env}}' }}/manifests"
+        repoURL: {{ env_repo_url }}
+        targetRevision: {{ env_repo_revision }}
+        path: "overlays/argo-rollouts/{{ '{{env}}' }}/manifests"
         directory:
           recurse: false
       destination:

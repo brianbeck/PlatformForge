@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from platformforge.core.vault import vault_pass_path
+from platformforge.core.config_io import find_env_root
 
 
 class AnsibleError(Exception):
@@ -49,8 +49,22 @@ def run_playbook(
 
     cmd: list[str] = ["ansible-playbook", str(playbook_path)]
 
+    # Resolve env repo path and pass to Ansible
+    try:
+        env_root = find_env_root()
+    except FileNotFoundError:
+        raise AnsibleError(
+            "Could not find platformforge-env repo. "
+            "Run 'platformforge init' or clone it to ../platformforge-env"
+        )
+
+    # Always pass env_repo_path so Ansible knows where to find/write env config
+    if extra_vars is None:
+        extra_vars = {}
+    extra_vars.setdefault("env_repo_path", str(env_root))
+
     # Vault password
-    vp = vault_pass_path(project_root)
+    vp = env_root / "vault" / ".vault_pass"
     if vp.exists():
         cmd.extend(["--vault-password-file", str(vp)])
 

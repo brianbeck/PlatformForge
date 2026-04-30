@@ -32,17 +32,20 @@ spec:
           targetRevision: "82.15.1"
           helm:
             valueFiles:
-              - $values/platform/observability/base-values.yaml
-              - "$values/platform/observability/overlays/{{ '{{env}}' }}/values.yaml"
-              - $values/platform/observability/dashboards/dashboards-values.yaml
-              - "$values/platform/observability/overlays/{{ '{{env}}' }}/alertmanager-url-values.yaml"
+              - $platform/platform/observability/base-values.yaml
+              - "$env/overlays/observability/{{ '{{env}}' }}/values.yaml"
+              - $platform/platform/observability/dashboards/dashboards-values.yaml
+              - "$env/overlays/observability/{{ '{{env}}' }}/alertmanager-url-values.yaml"
             skipCrds: false
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}
-          ref: values
-        - repoURL: {{ platformforge_repo_url }}
-          targetRevision: {{ platformforge_repo_revision }}
-          path: "platform/observability/overlays/{{ '{{env}}' }}"
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          path: "overlays/observability/{{ '{{env}}' }}"
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{ '{{namespace}}' }}"

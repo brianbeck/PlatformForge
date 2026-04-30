@@ -5,7 +5,7 @@ from __future__ import annotations
 import click
 
 from platformforge.core.ansible_runner import AnsibleError, run_playbook
-from platformforge.core.config_io import env_path, find_project_root, load_config
+from platformforge.core.config_io import env_path, find_env_root, find_project_root, load_config
 from platformforge.ui.console import console
 
 
@@ -22,7 +22,7 @@ def status_cmd(env: str) -> None:
     Runs ansible/playbooks/healthcheck.yml.
     """
     project_root = find_project_root()
-    config = load_config(env_path(project_root))
+    config = load_config(env_path())
     if config is None:
         console.print(
             "[red]No configuration found. Run [cyan]platformforge init[/cyan] first.[/red]"

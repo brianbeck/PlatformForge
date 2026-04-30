@@ -31,11 +31,14 @@ spec:
           targetRevision: "0.32.1"
           helm:
             valueFiles:
-              - $values/platform/trivy-operator/base-values.yaml
-              - "$values/platform/trivy-operator/overlays/{{ '{{env}}' }}/values.yaml"
+              - $platform/platform/trivy-operator/base-values.yaml
+              - "$env/overlays/trivy-operator/{{ '{{env}}' }}/values.yaml"
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}
-          ref: values
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
       destination:
         server: https://kubernetes.default.svc
         namespace: trivy-system

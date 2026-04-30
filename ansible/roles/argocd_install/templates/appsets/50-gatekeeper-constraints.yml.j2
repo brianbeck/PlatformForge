@@ -27,9 +27,9 @@ spec:
     spec:
       project: "{{ '{{project}}' }}"
       sources:
-        - repoURL: {{ platformforge_repo_url }}
-          targetRevision: {{ platformforge_repo_revision }}
-          path: "platform/gatekeeper/constraints/{{ '{{env}}' }}"
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          path: "overlays/gatekeeper/{{ '{{env}}' }}"
       destination:
         server: https://kubernetes.default.svc
         namespace: gatekeeper-system

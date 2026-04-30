@@ -31,11 +31,14 @@ spec:
           targetRevision: "3.22.0"
           helm:
             valueFiles:
-              - $values/platform/gatekeeper/base-values.yaml
-              - "$values/platform/gatekeeper/overlays/{{ '{{env}}' }}/values.yaml"
+              - $platform/platform/gatekeeper/base-values.yaml
+              - "$env/overlays/gatekeeper/{{ '{{env}}' }}/values.yaml"
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}
-          ref: values
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
       destination:
         server: https://kubernetes.default.svc
         namespace: gatekeeper-system

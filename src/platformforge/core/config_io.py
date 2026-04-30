@@ -38,9 +38,49 @@ def find_project_root(start: Path | None = None) -> Path:
     )
 
 
-def env_path(project_root: Path | None = None) -> Path:
-    """Return the path to environments.yml."""
-    root = project_root or find_project_root()
+def find_env_root(start: Path | None = None) -> Path:
+    """Find the platformforge-env repo root.
+
+    Checks, in order:
+    1. Current directory (if it has ``environments.yml`` or ``overlays/``)
+    2. Sibling directory ``../platformforge-env`` relative to PlatformForge root
+    3. Walk up from *start* looking for ``overlays/`` + ``argocd/``
+
+    Raises ``FileNotFoundError`` if not found.
+    """
+    current = (start or Path.cwd()).resolve()
+
+    # Check if we're already in the env repo
+    if (current / "environments.yml").exists() or (current / "overlays").is_dir():
+        return current
+
+    # Check sibling of PlatformForge
+    try:
+        platform_root = find_project_root(start)
+        sibling = platform_root.parent / "platformforge-env"
+        if sibling.is_dir():
+            return sibling
+    except FileNotFoundError:
+        pass
+
+    # Walk up
+    for _ in range(10):
+        if (current / "overlays").is_dir() and (current / "argocd").is_dir():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+    raise FileNotFoundError(
+        "Could not find platformforge-env root. Expected environments.yml or overlays/ directory. "
+        "Create it with: git clone <env-repo-url> ../platformforge-env"
+    )
+
+
+def env_path(env_root: Path | None = None) -> Path:
+    """Return the path to environments.yml (in the env repo)."""
+    root = env_root or find_env_root()
     return root / "environments.yml"
 
 
@@ -87,6 +127,9 @@ def save_config(config: EnvironmentConfig, path: Path) -> None:
     lines.append(f'prod_server: "{config.prod_server}"')
     lines.append(f'platformforge_repo_url: "{config.platformforge_repo_url}"')
     lines.append(f'platformforge_repo_revision: "{config.platformforge_repo_revision}"')
+    lines.append(f'env_repo_url: "{config.env_repo_url}"')
+    lines.append(f'env_repo_revision: "{config.env_repo_revision}"')
+    lines.append(f'env_repo_path: "{config.env_repo_path}"')
 
     # Ingress section
     lines.append(_INGRESS_BEGIN)

@@ -16,9 +16,9 @@
   ansible.builtin.command:
     cmd: >-
       ansible-vault decrypt
-      --vault-password-file {{ playbook_dir }}/../.vault_pass
+      --vault-password-file {{ env_repo_path }}/vault/.vault_pass
       --output -
-      {{ playbook_dir }}/../vault/secrets.yml
+      {{ env_repo_path }}/vault/secrets.yml
   register: vault_decrypt
   changed_when: false
   no_log: true

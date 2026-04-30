@@ -14,14 +14,14 @@ class VaultError(Exception):
     """Raised when an ansible-vault operation fails."""
 
 
-def vault_pass_path(project_root: Path) -> Path:
-    """Return the path to the vault password file."""
-    return project_root / "ansible" / ".vault_pass"
+def vault_pass_path(env_root: Path) -> Path:
+    """Return the path to the vault password file (in env repo)."""
+    return env_root / "vault" / ".vault_pass"
 
 
-def secrets_path(project_root: Path) -> Path:
-    """Return the path to the encrypted secrets file."""
-    return project_root / "ansible" / "vault" / "secrets.yml"
+def secrets_path(env_root: Path) -> Path:
+    """Return the path to the encrypted secrets file (in env repo)."""
+    return env_root / "vault" / "secrets.yml"
 
 
 def has_vault_pass(project_root: Path) -> bool:

@@ -33,14 +33,17 @@ spec:
           targetRevision: "v1.20.2"
           helm:
             valueFiles:
-              - $values/platform/cert-manager/base-values.yaml
-              - "$values/platform/cert-manager/overlays/{{ '{{env}}' }}/values.yaml"
+              - $platform/platform/cert-manager/base-values.yaml
+              - "$env/overlays/cert-manager/{{ '{{env}}' }}/values.yaml"
         - repoURL: {{ platformforge_repo_url }}
           targetRevision: {{ platformforge_repo_revision }}
-          ref: values
-        - repoURL: {{ platformforge_repo_url }}
-          targetRevision: {{ platformforge_repo_revision }}
-          path: "platform/cert-manager/overlays/{{ '{{env}}' }}"
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          path: "overlays/cert-manager/{{ '{{env}}' }}"
       destination:
         server: https://kubernetes.default.svc
         namespace: cert-manager
