@@ -19,3 +19,4 @@ class VaultSecrets(BaseModel):
     slack_webhook_security: str = ""
     slack_webhook_vulnerabilities: str = ""
     smtp_password: str = ""
+    github_pat: str = ""

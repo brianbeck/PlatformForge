@@ -107,6 +107,23 @@ def _section_repo(
     data["env_repo_revision"] = saved.get("env_repo_revision", "main")
     data["env_repo_path"] = str(env_root)
 
+    # GitHub PAT for Argo CD to access the private env repo
+    console.print()
+    console.print(
+        "  [dim]Argo CD needs a GitHub Personal Access Token to read the\n"
+        "  private env repo. Create one at: https://github.com/settings/tokens\n"
+        "  Scope: repo (read access to private repos)[/dim]"
+    )
+    existing_pat = ""
+    try:
+        loaded = load_secrets(env_root)
+        if loaded:
+            existing_pat = loaded.github_pat
+    except Exception:
+        pass
+    pat = ask("GitHub PAT", default=existing_pat, password=True)
+    data["_github_pat"] = pat
+
 
 # ── Section 2: Environment Model + Contexts ────────────────────────
 
@@ -439,6 +456,7 @@ def _write_vault(env_root: Path, data: dict) -> None:
         slack_webhook_security=data.pop("_slack_webhook_security", ""),
         slack_webhook_vulnerabilities=data.pop("_slack_webhook_vulnerabilities", ""),
         smtp_password=data.pop("_smtp_password", ""),
+        github_pat=data.pop("_github_pat", ""),
     )
     # Clean up the base name helper (not a config key)
     data.pop("_slack_base", None)

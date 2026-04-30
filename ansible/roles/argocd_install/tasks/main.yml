@@ -203,6 +203,67 @@
   changed_when: false
 
 # ============================================================
+# REGISTER ENV REPO WITH ARGO CD
+# Argo CD needs credentials to read the private env repo.
+# ============================================================
+
+- name: Load GitHub PAT from vault
+  block:
+    - name: Decrypt vault for GitHub PAT
+      ansible.builtin.command:
+        cmd: >-
+          ansible-vault decrypt
+          --vault-password-file {{ env_repo_path }}/vault/.vault_pass
+          --output -
+          {{ env_repo_path }}/vault/secrets.yml
+      register: vault_for_pat
+      changed_when: false
+      no_log: true
+
+    - name: Set GitHub PAT fact
+      ansible.builtin.set_fact:
+        github_pat: "{{ (vault_for_pat.stdout | from_yaml).github_pat | default('') }}"
+      no_log: true
+
+- name: Apply env repo credential to Argo CD (stage)
+  when: github_pat | default('') | length > 0 and deploy_stage | bool
+  block:
+    - name: Template repo secret (stage)
+      ansible.builtin.template:
+        src: argocd-repo-secret.yaml.j2
+        dest: /tmp/argocd-repo-secret-stage.yaml
+        mode: "0600"
+
+    - name: Apply repo secret (stage)
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ stage_context }} apply -f /tmp/argocd-repo-secret-stage.yaml"
+      changed_when: true
+
+    - name: Clean up repo secret (stage)
+      ansible.builtin.file:
+        path: /tmp/argocd-repo-secret-stage.yaml
+        state: absent
+
+- name: Apply env repo credential to Argo CD (prod)
+  when: github_pat | default('') | length > 0 and multi_cluster | bool and deploy_prod | bool
+  block:
+    - name: Template repo secret (prod)
+      ansible.builtin.template:
+        src: argocd-repo-secret.yaml.j2
+        dest: /tmp/argocd-repo-secret-prod.yaml
+        mode: "0600"
+
+    - name: Apply repo secret (prod)
+      ansible.builtin.command:
+        cmd: "kubectl --context {{ prod_context }} apply -f /tmp/argocd-repo-secret-prod.yaml"
+      changed_when: true
+
+    - name: Clean up repo secret (prod)
+      ansible.builtin.file:
+        path: /tmp/argocd-repo-secret-prod.yaml
+        state: absent
+
+# ============================================================
 # TEMPLATE APPPROJECTS + APPLICATIONSETS
 # Stage goes to argocd/waves-stage/, Prod to argocd/waves-prod/
 # Both are committed to Git for full GitOps compliance.
