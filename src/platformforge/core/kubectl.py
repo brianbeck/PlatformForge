@@ -2,7 +2,27 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+from pathlib import Path
+
+
+def _kubeconfig_env() -> dict[str, str]:
+    """Return an env dict with KUBECONFIG set.
+
+    If KUBECONFIG is already in the environment, use it as-is.
+    Otherwise, auto-discover kubeconfig files in ~/.kube/*.yml / *.yaml.
+    """
+    env = os.environ.copy()
+    if "KUBECONFIG" not in env:
+        kube_dir = Path.home() / ".kube"
+        if kube_dir.is_dir():
+            configs = sorted(
+                list(kube_dir.glob("*.yml")) + list(kube_dir.glob("*.yaml"))
+            )
+            if configs:
+                env["KUBECONFIG"] = ":".join(str(c) for c in configs)
+    return env
 
 
 def list_contexts() -> list[str]:
@@ -13,6 +33,7 @@ def list_contexts() -> list[str]:
             capture_output=True,
             text=True,
             check=True,
+            env=_kubeconfig_env(),
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         return []
@@ -26,6 +47,7 @@ def validate_context(name: str) -> bool:
 
 def get_server_url(context: str) -> str:
     """Extract the API server URL for a given context."""
+    env = _kubeconfig_env()
     try:
         result = subprocess.run(
             [
@@ -38,6 +60,7 @@ def get_server_url(context: str) -> str:
             capture_output=True,
             text=True,
             check=True,
+            env=env,
         )
         cluster_name = result.stdout.strip()
         if not cluster_name:
@@ -53,6 +76,7 @@ def get_server_url(context: str) -> str:
             capture_output=True,
             text=True,
             check=True,
+            env=env,
         )
         return result.stdout.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):

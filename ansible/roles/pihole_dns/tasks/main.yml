@@ -80,7 +80,7 @@
 
 - name: Register DNS records with primary Pi-hole
   ansible.builtin.uri:
-    url: "http://{{ pihole_primary_ip }}/api/config/dns/hosts/{{ item.ip }} {{ item.hostname }}"
+    url: "http://{{ pihole_primary_ip }}/api/config/dns/hosts/{{ item.ip }}%20{{ item.hostname }}"
     method: PUT
     headers:
       sid: "{{ pihole_primary_sid }}"
@@ -114,7 +114,7 @@
 - name: Register DNS records with secondary Pi-hole
   when: pihole_secondary_ip | length > 0 and pihole_secondary_password | length > 0
   ansible.builtin.uri:
-    url: "http://{{ pihole_secondary_ip }}/api/config/dns/hosts/{{ item.ip }} {{ item.hostname }}"
+    url: "http://{{ pihole_secondary_ip }}/api/config/dns/hosts/{{ item.ip }}%20{{ item.hostname }}"
     method: PUT
     headers:
       sid: "{{ pihole_secondary_sid }}"

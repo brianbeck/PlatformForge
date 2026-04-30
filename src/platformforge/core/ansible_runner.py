@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -60,12 +61,25 @@ def run_playbook(
 
     callback = stream_callback or (lambda line: sys.stdout.write(line + "\n"))
 
+    # Ensure KUBECONFIG is set.  If not already in the environment,
+    # auto-discover kubeconfig files in ~/.kube/*.yml / *.yaml.
+    env = os.environ.copy()
+    if "KUBECONFIG" not in env:
+        kube_dir = Path.home() / ".kube"
+        if kube_dir.is_dir():
+            configs = sorted(
+                list(kube_dir.glob("*.yml")) + list(kube_dir.glob("*.yaml"))
+            )
+            if configs:
+                env["KUBECONFIG"] = ":".join(str(c) for c in configs)
+
     proc = subprocess.Popen(
         cmd,
         cwd=str(ansible_dir),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env=env,
     )
 
     assert proc.stdout is not None
