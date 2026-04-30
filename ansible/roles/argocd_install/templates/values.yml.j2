@@ -13,6 +13,10 @@ global:
 {% endif %}
 
 server:
+  pdb:
+    enabled: true
+    maxUnavailable: 1
+
   extraArgs:
 {% if argocd_server_insecure %}
     - --insecure
@@ -40,6 +44,10 @@ controller:
     limits:
       cpu: "2"
       memory: 2Gi
+
+  pdb:
+    enabled: true
+    maxUnavailable: 1
 
   # Emit Kubernetes events on app health/sync changes
   metrics:
