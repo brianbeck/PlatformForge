@@ -7,7 +7,7 @@
 # kube-state-metrics digest set here (no other config for it):
 kube-state-metrics:
   image:
-    sha: "1545919b72e3ae035454fc054131e8d0f14b42ef6fc5b2ad5c751cafa6b2130e"
+    sha: "sha256:1545919b72e3ae035454fc054131e8d0f14b42ef6fc5b2ad5c751cafa6b2130e"
 
 # --- Prometheus ---
 prometheus:
@@ -161,7 +161,7 @@ grafana:
 nodeExporter:
   enabled: true
   image:
-    sha: "337ff1d356b68d39cef853e8c6345de11ce7556bb34cda8bd205bcf2ed30b565"
+    digest: "sha256:337ff1d356b68d39cef853e8c6345de11ce7556bb34cda8bd205bcf2ed30b565"
 
 # --- kube-state-metrics ---
 kubeStateMetrics:
