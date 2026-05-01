@@ -48,14 +48,13 @@ spec:
         - group: admissionregistration.k8s.io
           kind: MutatingWebhookConfiguration
           jqPathExpressions:
-            - .webhooks[]?.clientConfig.caBundle
-            - .webhooks[]?.failurePolicy
-            - .webhooks[]?.reinvocationPolicy
+            - .webhooks
+            - .metadata.ownerReferences
         - group: admissionregistration.k8s.io
           kind: ValidatingWebhookConfiguration
           jqPathExpressions:
-            - .webhooks[]?.clientConfig.caBundle
-            - .webhooks[]?.failurePolicy
+            - .webhooks
+            - .metadata.ownerReferences
       syncPolicy:
         automated:
           prune: true
