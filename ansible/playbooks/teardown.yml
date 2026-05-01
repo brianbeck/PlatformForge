@@ -145,6 +145,7 @@
         - cert-manager
         - argo-rollouts
         - alloy
+        - cosign-system
       changed_when: false
       failed_when: false
 
@@ -175,6 +176,7 @@
         - cert-manager
         - argo-rollouts
         - alloy
+        - cosign-system
       changed_when: false
       failed_when: false
 
@@ -264,6 +266,7 @@
         - cert-manager
         - argo-rollouts
         - alloy
+        - cosign-system
       changed_when: false
       failed_when: false
 
@@ -294,6 +297,7 @@
         - cert-manager
         - argo-rollouts
         - alloy
+        - cosign-system
       changed_when: false
       failed_when: false
 

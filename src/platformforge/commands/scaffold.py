@@ -21,6 +21,7 @@ SERVICES = [
     "external-secrets",
     "trivy-operator",
     "argo-rollouts",
+    "sigstore-policy-controller",
 ]
 
 GITIGNORE = """\

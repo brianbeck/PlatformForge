@@ -292,6 +292,7 @@
         {"src": "20-observability.yml.j2", "dest": "20-observability/kube-prometheus-stack.yml"}
       ] + ([{"src": "22-alloy.yml.j2", "dest": "22-logging/alloy.yml"}] if loki_url | default('') | length > 0 else []) + [
         {"src": "30-gatekeeper-core.yml.j2", "dest": "30-policy-core/gatekeeper-core.yml"},
+        {"src": "32-sigstore-policy-controller.yml.j2", "dest": "32-sigstore/sigstore-policy-controller.yml"},
         {"src": "40-gatekeeper-templates.yml.j2", "dest": "40-policy-templates/gatekeeper-templates.yml"},
         {"src": "50-gatekeeper-constraints.yml.j2", "dest": "50-policy-constraints/gatekeeper-constraints.yml"},
         {"src": "60-falco.yml.j2", "dest": "60-runtime-security/falco.yml"},
@@ -755,6 +756,16 @@
     mode: "0644"
   vars:
     alertmanager_hostname: "{{ alertmanager_hostname_prod }}"
+
+- name: Ensure Alloy overlay directories exist
+  when: loki_url | default('') | length > 0
+  ansible.builtin.file:
+    path: "{{ env_repo_path }}/overlays/alloy/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - stage
+    - prod
 
 - name: Template Alloy overlay values (stage)
   when: loki_url | default('') | length > 0 and deploy_stage | bool

@@ -9,6 +9,7 @@ from platformforge.commands.config import config_group
 from platformforge.commands.deploy import deploy_cmd
 from platformforge.commands.dns import dns_cmd
 from platformforge.commands.init import init_cmd
+from platformforge.commands.pin_images import pin_images_cmd
 from platformforge.commands.scaffold import scaffold_cmd
 from platformforge.commands.status import status_cmd
 from platformforge.commands.teardown import teardown_cmd
@@ -23,6 +24,7 @@ def cli() -> None:
 cli.add_command(scaffold_cmd)
 cli.add_command(init_cmd)
 cli.add_command(deploy_cmd)
+cli.add_command(pin_images_cmd)
 cli.add_command(status_cmd)
 cli.add_command(teardown_cmd)
 cli.add_command(dns_cmd)

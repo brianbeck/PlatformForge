@@ -1,0 +1,18 @@
+# Sigstore Policy Controller base Helm values
+# Verifies container image signatures at admission time using Cosign.
+# Configured via ClusterImagePolicy CRDs.
+
+# Install CRDs (ClusterImagePolicy, etc.)
+installCRDs: true
+
+loglevel: info
+
+webhook:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

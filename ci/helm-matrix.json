@@ -8,5 +8,6 @@
   {"dir": "falco", "chart": "falcosecurity/falco", "repo_name": "falcosecurity", "repo_url": "https://falcosecurity.github.io/charts", "version": "8.0.1", "env": "base"},
   {"dir": "trivy-operator", "chart": "aquasecurity/trivy-operator", "repo_name": "aquasecurity", "repo_url": "https://aquasecurity.github.io/helm-charts/", "version": "0.32.1", "env": "base"},
   {"dir": "argo-rollouts", "chart": "argo/argo-rollouts", "repo_name": "argo", "repo_url": "https://argoproj.github.io/argo-helm", "version": "2.40.9", "env": "base"},
-  {"dir": "alloy", "chart": "grafana/alloy", "repo_name": "grafana", "repo_url": "https://grafana.github.io/helm-charts", "version": "1.8.0", "env": "base"}
+  {"dir": "alloy", "chart": "grafana/alloy", "repo_name": "grafana", "repo_url": "https://grafana.github.io/helm-charts", "version": "1.8.0", "env": "base"},
+  {"dir": "sigstore-policy-controller", "chart": "sigstore/policy-controller", "repo_name": "sigstore", "repo_url": "https://sigstore.github.io/helm-charts", "version": "0.10.6", "env": "base"}
 ]

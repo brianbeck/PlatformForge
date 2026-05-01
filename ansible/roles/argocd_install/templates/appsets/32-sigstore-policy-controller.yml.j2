@@ -1,0 +1,59 @@
+# Sigstore Policy Controller - Singleton (one per cluster)
+# Verifies container image signatures at admission time.
+# Wave 32: after Gatekeeper (30), before constraints (40-50)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sigstore-policy-controller
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+{% for entry in singleton_envs %}
+          - env: "{{ entry.env }}"
+            project: "{{ entry.project }}"
+{% endfor %}
+  template:
+    metadata:
+      name: "sigstore-policy-controller-{{ '{{env}}' }}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: sigstore-policy-controller
+      annotations:
+        argocd.argoproj.io/sync-wave: "32"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{ '{{project}}' }}"
+      sources:
+        - repoURL: https://sigstore.github.io/helm-charts
+          chart: policy-controller
+          targetRevision: "{{ sigstore_chart_version }}"
+          helm:
+            valueFiles:
+              - $platform/platform/sigstore-policy-controller/base-values.yaml
+              - "$env/overlays/sigstore-policy-controller/{{ '{{env}}' }}/values.yaml"
+        - repoURL: {{ platformforge_repo_url }}
+          targetRevision: {{ platformforge_repo_revision }}
+          ref: platform
+        - repoURL: {{ env_repo_url }}
+          targetRevision: {{ env_repo_revision }}
+          ref: env
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: cosign-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m
