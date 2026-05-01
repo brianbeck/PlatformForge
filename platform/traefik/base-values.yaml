@@ -1,6 +1,10 @@
 # Traefik Ingress Controller base Helm values
 # Deployed as a LoadBalancer service via MetalLB.
 
+# Image pinned by digest for supply chain security
+image:
+  tag: "v3.6.12@sha256:171c9c3565b29f6c133f1c1b43c5d4e5853415198e9e1078c001f8702ff66aec"
+
 # Deployment configuration
 deployment:
   replicas: 1

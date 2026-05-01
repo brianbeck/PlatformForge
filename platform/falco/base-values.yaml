@@ -1,6 +1,17 @@
 # Falco base Helm values
 # Shared across all environments - override per-env in overlays/
 
+# Images pinned by digest for supply chain security
+image:
+  registry: docker.io
+  repository: falcosecurity/falco
+  tag: "0.43.0@sha256:88c01fa17bcc03c990a2691d08e7d43d746e32b07dbe9c6eb77bfdb3646cec41"
+falcoctl:
+  image:
+    registry: docker.io
+    repository: falcosecurity/falcoctl
+    tag: "0.12.2@sha256:0d3bddce03a26365b86e6ff1aa5c51965d2e16569e8cf8b3e37a3d3ef186dc9b"
+
 driver:
   # Use modern eBPF driver (no kernel module needed).
   # Requires kernel 5.8+ with BTF support. ClusterForge default images

@@ -2,6 +2,10 @@
 # Syncs secrets from external stores (Vault, AWS SSM, 1Password, etc.)
 # into Kubernetes Secrets.
 
+# Image pinned by digest for supply chain security
+image:
+  tag: "v2.3.0@sha256:c425f51f422506c380550ad32fbf155412c7be84dd1c4b196130dcf04497be80"
+
 installCRDs: true
 
 resources:

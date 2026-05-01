@@ -1,6 +1,19 @@
 # OPA Gatekeeper base Helm values
 # Shared across all environments - override per-env in overlays/
 
+# Images pinned by digest for supply chain security
+image:
+  release: "v3.22.0@sha256:54c3f990b722a112fa610841ed7067a987e66aa51ba2da73a92e76066fc4e2e8"
+  crdRepository: "openpolicyagent/gatekeeper-crds"
+preInstall:
+  crdRepository:
+    image:
+      tag: "v3.22.0@sha256:5b7d28e515c38041d4b1350cb68a46e229eb8bcf506ccc64408a3d8ba58a695f"
+postInstall:
+  probeWebhook:
+    image:
+      tag: "8.12.0@sha256:3dfa70a646c5d03ddf0e7c0ff518a5661e95b8bcbc82079f0fb7453a96eaae35"
+
 # Run in enforcement mode by default
 # Override to "dryrun" in stage if desired
 controllerManager:

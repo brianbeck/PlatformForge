@@ -2,9 +2,18 @@
 # Includes Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics,
 # and the Prometheus Operator (which processes ServiceMonitor/PrometheusRule CRDs).
 
+# --- Images pinned by digest for supply chain security ---
+# Digests are set inline in each component section below.
+# kube-state-metrics digest set here (no other config for it):
+kube-state-metrics:
+  image:
+    sha: "1545919b72e3ae035454fc054131e8d0f14b42ef6fc5b2ad5c751cafa6b2130e"
+
 # --- Prometheus ---
 prometheus:
   prometheusSpec:
+    image:
+      sha: "7571a304e67fbd794be02422b13627dc7de822152f74e99e2bef95d29eceecde"
     # Retain metrics for 15 days by default
     retention: 15d
 
@@ -73,6 +82,8 @@ alertmanager:
   enabled: true
 
   alertmanagerSpec:
+    image:
+      sha: "88b605de9aba0410775c1eb3438f951115054e0d307f23f274a4c705f51630c1"
     resources:
       requests:
         cpu: 50m
@@ -116,6 +127,8 @@ alertmanager:
 # --- Grafana ---
 grafana:
   enabled: true
+  image:
+    sha: "83749231c3835e390a3144e5e940203e42b9589761f20ef3169c716e734ad505"
 
   adminPassword: ""  # Auto-generated; retrieve from secret
 
@@ -132,6 +145,8 @@ grafana:
 
   # Sidecar picks up ConfigMaps with dashboards label
   sidecar:
+    image:
+      sha: "a6b3f707f883108376514489a94d6629109a327b2978e1d826cd104c4ca436df"
     dashboards:
       enabled: true
       label: grafana_dashboard
@@ -145,6 +160,8 @@ grafana:
 # --- Node exporter ---
 nodeExporter:
   enabled: true
+  image:
+    sha: "337ff1d356b68d39cef853e8c6345de11ce7556bb34cda8bd205bcf2ed30b565"
 
 # --- kube-state-metrics ---
 kubeStateMetrics:
@@ -152,6 +169,15 @@ kubeStateMetrics:
 
 # --- Prometheus Operator ---
 prometheusOperator:
+  image:
+    sha: "fea93ca9be807eee2f51f4d997b7a2bf073d4051d9012b45b3c84a7b9e8b3f25"
+  prometheusConfigReloader:
+    image:
+      sha: "959d47672fbff2776a04ec62b8afcec89e8c036af84dc5fade50019dab212746"
+  admissionWebhooks:
+    patch:
+      image:
+        sha: "43401e216e89e3a76911bda8b282262468467a613b3086e27bb36acb79cf1498"
   resources:
     requests:
       cpu: 100m

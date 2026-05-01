@@ -1,6 +1,13 @@
 # cert-manager base Helm values
 # Automated TLS certificate management with Let's Encrypt
 
+# Images pinned by digest for supply chain security
+image:
+  digest: "sha256:fe0623d7d04a382c888f03343a3a2da716e0d96ad3d5d790c0ebcbcb2a4329a5"
+startupapicheck:
+  image:
+    digest: "sha256:4e2a69b4a0cc9627905bbeecf720f95d5153ca39cacdab923d2748e73556792b"
+
 # Install CRDs with the chart
 crds:
   enabled: true
@@ -15,6 +22,8 @@ resources:
     memory: 128Mi
 
 webhook:
+  image:
+    digest: "sha256:baf651128b9f05c426cbd5e60e2036bf382c99ca270f49d0757d6f7d2452f4e5"
   resources:
     requests:
       cpu: 25m
@@ -24,6 +33,8 @@ webhook:
       memory: 64Mi
 
 cainjector:
+  image:
+    digest: "sha256:6f5a644135887b2aa7d5cc145072fa56421560e3586ff1f184358022d490f4e1"
   resources:
     requests:
       cpu: 25m

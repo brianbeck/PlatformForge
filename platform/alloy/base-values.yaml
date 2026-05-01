@@ -1,4 +1,8 @@
 # Grafana Alloy base Helm values
+
+# Image pinned by digest for supply chain security
+image:
+  tag: "v1.16.0@sha256:6e00cf7c5a692ff5f24844529416ed017d76fce922f8199004e73d5eca46b6b8"
 # DaemonSet that collects container logs from all nodes and ships them
 # to an external Loki instance. The Loki URL is set via LOKI_URL env var
 # in the environment overlay values (platformforge-env).

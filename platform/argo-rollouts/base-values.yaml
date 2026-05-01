@@ -3,6 +3,10 @@
 # Deployments. Consumed by DevExForge, which creates Rollout CRs in
 # team namespaces.
 
+# Image pinned by digest for supply chain security
+image:
+  tag: "v1.9.0@sha256:13346024500167f71815e1dcd7671f46378137e726ef03b2baf69a188224f813"
+
 # Install CRDs and keep them on uninstall (Argo CD owns lifecycle).
 installCRDs: true
 keepCRDs: true
@@ -32,12 +36,12 @@ controller:
       cpu: 500m
       memory: 512Mi
 
-# Web dashboard. Exposed via Traefik IngressRoute (see platform/argo-rollouts/overlays/<env>/ingressroute.yaml).
-# Auth is intentionally disabled — dashboard sits behind internal Pi-hole DNS,
-# not the public internet.
+# Web dashboard — image pinned by digest
 dashboard:
   enabled: true
   replicas: 1
+  image:
+    tag: "v1.9.0@sha256:86e1040c5d12cf4ec5c0d6205c5ca9f51677ad8ddc478a1f0790de9296f190e7"
   service:
     type: ClusterIP
     port: 3100
@@ -49,8 +53,7 @@ dashboard:
       cpu: 200m
       memory: 256Mi
 
-# ServiceAccount used by the controller. (Traefik IngressRoute RBAC was
-# removed -- not needed without the traffic-router plugin.)
+# ServiceAccount used by the controller.
 serviceAccount:
   create: true
   name: argo-rollouts
