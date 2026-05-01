@@ -172,20 +172,17 @@ Plan:
 - Runbook in README: full recovery procedure (scratch rebuild vs partial restore)
 - Credentials stored in Ansible Vault
 
-**7. Pod Disruption Budgets** (was #6)
-Prod overlays set 2 replicas for Traefik, observability, and argo-rollouts but no PDBs. A node drain can take both replicas simultaneously. Add PDBs for:
-- Traefik (`maxUnavailable: 1`)
-- Argo CD server + controller
-- Argo Rollouts controller (prod)
+**7. Pod Disruption Budgets** (was #6) — **DONE**
+PDBs with `maxUnavailable: 1` added for Traefik (prod), Argo CD server + controller,
+and Argo Rollouts controller + dashboard (prod).
 
 **8. Resource quotas / LimitRange for team namespaces** (was #7)
 DevExForge creates team namespaces dynamically. Without ResourceQuotas, a single team can starve the cluster. PlatformForge could provide a default LimitRange via Gatekeeper or a shared Helm chart that DevExForge applies on namespace creation.
 
-**9. Log aggregation** (was #8)
-Metrics (Prometheus) and runtime detection (Falco) exist, but no centralized logging. Options:
-- Loki + Promtail (lightweight, fits the Grafana ecosystem already deployed)
-- Document that ClusterForge clusters ship logs to an external system
-Without this, debugging a crash-looping pod means `kubectl logs` on the right node at the right time.
+**9. Log aggregation** (was #8) — **DONE**
+Grafana Alloy (wave 22) ships container logs to external Loki. Loki URL configured
+via `platformforge init`, Alloy deployed as DaemonSet on both clusters. Loki added
+as Grafana datasource in the in-cluster Grafana instances.
 
 **10. Sealed Secrets key rotation** (was #9)
 Sealed Secrets controller generates an encryption key on first install. If the controller is reinstalled, existing SealedSecrets become undecryptable. Add a CronJob or documented procedure to:
@@ -241,9 +238,139 @@ to their own Slack channels or email addresses. This would require:
 - Consider whether this belongs in PlatformForge (platform team controls routing) or
   DevExForge (teams self-service their own alert destinations)
 
+**Centralized observability: single pane of glass**
+Currently the observability stack is split across three places:
+- **In-cluster Grafana** (stage + prod): metrics dashboards (Prometheus datasource), 
+  Grafana.com provisioned dashboards (ArgoCD, Falco, Trivy, Node Exporter)
+- **External Grafana**: log searching (Loki datasource via Alloy)
+- **In-cluster Alertmanager**: alert routing to Slack
+
+To get a single pane of glass in the external Grafana, add:
+1. **Remote Prometheus datasources**: Add each cluster's Prometheus as a datasource 
+   in the external Grafana (`http://<prometheus-service>:9090`). Requires network 
+   reachability from the external Grafana host to the cluster Traefik LoadBalancer IPs.
+   Could also use the Prometheus HTTPRoutes (`https://prometheus-{stage,prod}.<domain>`).
+2. **Remote Alertmanager datasource**: Same pattern — point external Grafana at the 
+   in-cluster Alertmanager endpoints.
+3. **Prometheus remote-write to Mimir/Thanos**: For long-term metric storage and 
+   cross-cluster queries. Requires deploying Mimir or Thanos externally (like Loki).
+   This is the enterprise approach for multi-cluster metric aggregation.
+
+**Recommended dashboard IDs for external Grafana (Loki logs):**
+- Loki Kubernetes Logs (ID 15141): browse logs by namespace, pod, container
+
+**Cloud portability (AWS EKS / GCP GKE)**
+PlatformForge is ~90% cloud-portable today. All platform services, ApplicationSets,
+CLI, and CI work unchanged. The env repo (`platformforge-env`) absorbs cloud-specific
+config via overlay values. Changes needed for full cloud support:
+
+1. **DNS registration** — the `pihole_dns` role is homelab-specific. For cloud:
+   - Add `external-dns` as a new platform service (Helm chart, wave 12 after Traefik)
+   - `external-dns` auto-creates Route53/Cloud DNS records from HTTPRoutes/Gateway
+   - Add `dns_provider` choice to `platformforge init`: `pihole`, `external-dns`, `none`
+   - Pi-hole role becomes one option, not the default
+
+2. **Gateway provider** — currently hardcoded to `GatewayClass: traefik`. For cloud:
+   - Make `gatewayClassName` configurable in `platformforge init`
+   - AWS: `amazon-vpc-lattice` or keep Traefik
+   - GKE: `gke-l7-global-external-managed` or keep Traefik
+   - Template the Gateway resource with `{{ gateway_class_name }}`
+
+3. **Storage** — prod overlays disable persistence due to `local-path` limitations:
+   - Cloud StorageClasses (gp3, pd-standard) support ReadWriteOnce properly
+   - Cloud env repo overlays should enable Prometheus/Grafana persistence
+   - Add `storage_class` to `platformforge init` (default: cluster default)
+
+4. **Secrets strategy** — Sealed Secrets works everywhere but cloud-native is better:
+   - AWS: External Secrets Operator + AWS Secrets Manager (already supported)
+   - GCP: External Secrets Operator + GCP Secret Manager (already supported)
+   - The `secrets_strategy` choice in `platformforge init` already handles this
+
+5. **TLS certificates** — cert-manager works on all clouds:
+   - AWS: cert-manager + Route53 DNS-01 solver (same pattern as Cloudflare)
+   - GCP: cert-manager + Cloud DNS solver
+   - Or use cloud-native certs (ACM, Google-managed) — would need a new cert provider option
+   - The `cloudflare_api_token` vault key would need to generalize to `dns_solver_credentials`
+
+6. **LoadBalancer** — no PlatformForge change needed:
+   - Cloud clusters auto-provision NLB/ALB/GCP LB for `type: LoadBalancer` services
+   - MetalLB is only needed on bare metal (ClusterForge responsibility, not PlatformForge)
+
+**What works immediately on cloud (no changes):**
+- All platform services (Argo CD, Gatekeeper, Falco, Trivy, Argo Rollouts, Alloy)
+- ApplicationSets (use `kubernetes.default.svc`)
+- CLI (`platformforge scaffold/init/deploy/status/teardown`)
+- CI pipeline
+- Two-repo model (PlatformForge public + env repo private)
+- Multi-channel Slack alerting
+- Grafana dashboards
+- Pod Disruption Budgets
+- Gateway API (if using Traefik on cloud)
+
+**Estimated scope:** 2-3 days for DNS provider abstraction + GatewayClass config.
+The rest is env-repo-level config, not PlatformForge code changes.
+
 **Security Layer 4: Gatekeeper + External Data Provider**
 Gatekeeper querying Trivy Operator vulnerability data at admission time. Required components:
 - Gatekeeper External Data Provider CRD pointing to Trivy Operator
 - ConstraintTemplate querying vulnerability data via the provider
 - Constraints with configurable CVE thresholds
 Reference: https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata
+
+## HIPAA Compliance Readiness
+
+PlatformForge is designed to support healthcare (HIPAA-compliant) workloads. This section
+tracks alignment with HIPAA Technical Safeguards (45 CFR §164.312).
+
+### Current Status
+
+| HIPAA Requirement | Section | Status | PlatformForge Implementation |
+|---|---|---|---|
+| **Access Control** | §164.312(a) | Partial | Argo CD RBAC (role:platform-admin), Gatekeeper admission policies, Keycloak available for SSO |
+| **Audit Controls** | §164.312(b) | Partial | Falco runtime detection, Alloy log shipping to Loki, Argo CD operation history |
+| **Integrity Controls** | §164.312(c) | In Progress | Image digest pinning, Sigstore signature verification, Gatekeeper digest enforcement |
+| **Transmission Security** | §164.312(e) | Done | TLS everywhere via cert-manager + Gateway API, HTTPS-only entrypoints |
+| **Encryption at Rest** | §164.312(a)(2)(iv) | Partial | Sealed Secrets for K8s secrets, Ansible Vault for config secrets |
+| **Network Segmentation** | — | Partial | NetworkPolicies for Falco + Gatekeeper namespaces |
+| **Vulnerability Management** | — | Done | Trivy Operator continuous scanning + PrometheusRules + Slack alerting |
+| **Incident Detection** | — | Done | Falco eBPF runtime detection + multi-channel Slack alerting |
+| **Backup & Recovery** | — | TODO | Argo CD backup planned (trigger: before DevExForge prod) |
+
+### Remaining HIPAA Work
+
+**Access Control:**
+- OIDC/SSO integration for all dashboards (Argo CD, Grafana, Alertmanager, Rollouts)
+- Service-to-service mTLS (Linkerd or Istio service mesh, or Traefik's built-in mTLS)
+- RBAC audit: document who has access to what and why
+
+**Audit Controls:**
+- Audit log retention policy (how long logs are kept in Loki, minimum 6 years for HIPAA)
+- Kubernetes API audit logging enabled and shipped to Loki
+- Immutable audit trail (write-once storage for compliance evidence)
+
+**Encryption at Rest:**
+- etcd encryption at rest (ClusterForge responsibility — enable `--encryption-provider-config`)
+- PersistentVolume encryption (cloud: encrypted EBS/PD by default; homelab: LUKS on nodes)
+- Backup encryption (MinIO server-side encryption for Argo CD exports)
+
+**Network Segmentation:**
+- NetworkPolicies for ALL platform namespaces (#11 on roadmap) — currently only Falco + Gatekeeper
+- Microsegmentation for team namespaces (default-deny + per-service allow)
+- Egress controls (restrict which services can reach the internet)
+
+**Integrity Controls (in progress):**
+- Image digest pinning for all platform images (this implementation)
+- Sigstore policy-controller for signature verification (this implementation)
+- Gatekeeper K8sRequireImageDigest ConstraintTemplate (this implementation)
+- Security Layer 4: Gatekeeper + Trivy admission-time CVE blocking
+
+**Backup & Recovery:**
+- Argo CD state backup to MinIO (#6 on roadmap)
+- Application data backup strategy (per-team responsibility, PlatformForge provides Velero or similar)
+- Disaster recovery runbook with Recovery Time Objective (RTO) and Recovery Point Objective (RPO)
+
+**Compliance Documentation:**
+- Business Associate Agreement (BAA) template for cloud providers
+- Security controls mapping document (HIPAA safeguard → PlatformForge implementation)
+- Penetration testing schedule and scope
+- Incident response playbook

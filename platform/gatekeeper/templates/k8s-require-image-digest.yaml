@@ -1,0 +1,60 @@
+# Require container images to use SHA256 digest references.
+# Prevents mutable tag-based image references that are vulnerable to
+# supply chain attacks. Part of HIPAA integrity controls (§164.312(c)).
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequireimagedigest
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    description: Requires container images to include a SHA256 digest (@sha256:...)
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireImageDigest
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptImages:
+              description: >-
+                List of image glob patterns to exempt from the digest requirement.
+                Supports wildcards (e.g., "registry.k8s.io/*").
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequireimagedigest
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not has_digest(container.image)
+          not is_exempt(container.image)
+          msg := sprintf("Container '%v' uses image '%v' without a digest. Use image@sha256:... format.", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not has_digest(container.image)
+          not is_exempt(container.image)
+          msg := sprintf("Init container '%v' uses image '%v' without a digest. Use image@sha256:... format.", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not has_digest(container.image)
+          not is_exempt(container.image)
+          msg := sprintf("Ephemeral container '%v' uses image '%v' without a digest. Use image@sha256:... format.", [container.name, container.image])
+        }
+
+        has_digest(image) {
+          contains(image, "@sha256:")
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }
