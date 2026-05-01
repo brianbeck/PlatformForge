@@ -44,6 +44,18 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: cosign-system
+      ignoreDifferences:
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          jqPathExpressions:
+            - .webhooks[]?.clientConfig.caBundle
+            - .webhooks[]?.failurePolicy
+            - .webhooks[]?.reinvocationPolicy
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jqPathExpressions:
+            - .webhooks[]?.clientConfig.caBundle
+            - .webhooks[]?.failurePolicy
       syncPolicy:
         automated:
           prune: true
@@ -51,6 +63,7 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+          - RespectIgnoreDifferences=true
         retry:
           limit: 5
           backoff:
