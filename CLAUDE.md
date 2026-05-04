@@ -328,7 +328,7 @@ tracks alignment with HIPAA Technical Safeguards (45 CFR §164.312).
 |---|---|---|---|
 | **Access Control** | §164.312(a) | Partial | Argo CD RBAC (role:platform-admin), Gatekeeper admission policies, Keycloak available for SSO |
 | **Audit Controls** | §164.312(b) | Partial | Falco runtime detection, Alloy log shipping to Loki, Argo CD operation history |
-| **Integrity Controls** | §164.312(c) | In Progress | Image digest pinning, Sigstore signature verification, Gatekeeper digest enforcement |
+| **Integrity Controls** | §164.312(c) | Mostly Done | 27 images digest-pinned, Sigstore policy-controller deployed, Gatekeeper K8sRequireImageDigest enforced in team namespaces |
 | **Transmission Security** | §164.312(e) | Done | TLS everywhere via cert-manager + Gateway API, HTTPS-only entrypoints |
 | **Encryption at Rest** | §164.312(a)(2)(iv) | Partial | Sealed Secrets for K8s secrets, Ansible Vault for config secrets |
 | **Network Segmentation** | — | Partial | NetworkPolicies for Falco + Gatekeeper namespaces |
@@ -358,11 +358,12 @@ tracks alignment with HIPAA Technical Safeguards (45 CFR §164.312).
 - Microsegmentation for team namespaces (default-deny + per-service allow)
 - Egress controls (restrict which services can reach the internet)
 
-**Integrity Controls (in progress):**
-- Image digest pinning for all platform images (this implementation)
-- Sigstore policy-controller for signature verification (this implementation)
-- Gatekeeper K8sRequireImageDigest ConstraintTemplate (this implementation)
-- Security Layer 4: Gatekeeper + Trivy admission-time CVE blocking
+**Integrity Controls:**
+- ~~Image digest pinning for all platform images~~ — **DONE** (27 images)
+- ~~Sigstore policy-controller for signature verification~~ — **DONE** (wave 32)
+- ~~Gatekeeper K8sRequireImageDigest ConstraintTemplate~~ — **DONE** (dryrun stage, deny prod)
+- `platformforge pin-images` CLI command for refreshing digests on upgrades — **DONE**
+- Security Layer 4: Gatekeeper + Trivy admission-time CVE blocking — TODO
 
 **Backup & Recovery:**
 - Argo CD state backup to MinIO (#6 on roadmap)

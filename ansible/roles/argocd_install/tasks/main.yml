@@ -840,6 +840,74 @@
         kubectl --context {{ stage_context }} -n argocd get applications -w
 
 # ============================================================
+# TRIVY ADMISSION PROVIDER (External Data for Gatekeeper)
+# The Provider CRD requires the CA bundle from the self-signed cert.
+# We read it from the cluster after cert-manager creates it.
+# ============================================================
+
+- name: Create Trivy admission Provider CRD (stage)
+  when: deploy_stage | bool
+  block:
+    - name: Wait for trivy-admission-provider CA secret (stage)
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ stage_context }} -n gatekeeper-system
+          get secret trivy-admission-provider-ca -o jsonpath='{.data.ca\.crt}'
+      register: trivy_ca_stage
+      changed_when: false
+      retries: 20
+      delay: 10
+      until: trivy_ca_stage.stdout | default('') | length > 0
+      failed_when: false
+
+    - name: Apply Trivy Provider CRD (stage)
+      when: trivy_ca_stage.stdout | default('') | length > 0
+      ansible.builtin.shell:
+        cmd: |
+          cat <<'EOF' | kubectl --context {{ stage_context }} apply -f -
+          apiVersion: externaldata.gatekeeper.sh/v1beta1
+          kind: Provider
+          metadata:
+            name: trivy-vulnerability-checker
+          spec:
+            url: https://trivy-admission-provider.gatekeeper-system:8443/validate
+            timeout: 10
+            caBundle: "{{ trivy_ca_stage.stdout }}"
+          EOF
+      changed_when: true
+
+- name: Create Trivy admission Provider CRD (prod)
+  when: multi_cluster | bool and deploy_prod | bool
+  block:
+    - name: Wait for trivy-admission-provider CA secret (prod)
+      ansible.builtin.shell:
+        cmd: >-
+          kubectl --context {{ prod_context }} -n gatekeeper-system
+          get secret trivy-admission-provider-ca -o jsonpath='{.data.ca\.crt}'
+      register: trivy_ca_prod
+      changed_when: false
+      retries: 20
+      delay: 10
+      until: trivy_ca_prod.stdout | default('') | length > 0
+      failed_when: false
+
+    - name: Apply Trivy Provider CRD (prod)
+      when: trivy_ca_prod.stdout | default('') | length > 0
+      ansible.builtin.shell:
+        cmd: |
+          cat <<'EOF' | kubectl --context {{ prod_context }} apply -f -
+          apiVersion: externaldata.gatekeeper.sh/v1beta1
+          kind: Provider
+          metadata:
+            name: trivy-vulnerability-checker
+          spec:
+            url: https://trivy-admission-provider.gatekeeper-system:8443/validate
+            timeout: 10
+            caBundle: "{{ trivy_ca_prod.stdout }}"
+          EOF
+      changed_when: true
+
+# ============================================================
 # PI-HOLE DNS (if Traefik + ingress enabled)
 # ============================================================
 

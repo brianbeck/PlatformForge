@@ -27,9 +27,18 @@ spec:
         app.kubernetes.io/part-of: platformforge
     spec:
       serviceAccountName: trivy-admission-provider
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: provider
           image: ghcr.io/brianbeck/trivy-admission-provider:v0.1.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
           ports:
             - containerPort: 8443
               protocol: TCP
