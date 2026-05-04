@@ -1,10 +1,18 @@
 # Gatekeeper External Data Provider pointing to the Trivy admission service.
 # ConstraintTemplates use external_data({"provider": "trivy-vulnerability-checker", ...})
 # to query this provider at admission time.
+#
+# The caBundle is injected by cert-manager's ca-injector from the CA
+# certificate used to sign the provider's TLS cert. The placeholder
+# value "Cg==" (base64 of newline) satisfies the Gatekeeper validation
+# webhook until ca-injector replaces it with the real CA bundle.
 apiVersion: externaldata.gatekeeper.sh/v1beta1
 kind: Provider
 metadata:
   name: trivy-vulnerability-checker
+  annotations:
+    cert-manager.io/inject-ca-from: gatekeeper-system/trivy-admission-provider-tls
 spec:
   url: https://trivy-admission-provider.gatekeeper-system:8443/validate
   timeout: 10
+  caBundle: Cg==
