@@ -116,8 +116,12 @@ jobs:
 
       - name: Test ConstraintTemplates
         run: |
+          # Exclude templates using external_data() — gator doesn't support
+          # this Gatekeeper-only function in offline compilation
           gator test \
-            --filename=platform/gatekeeper/templates/
+            $(find platform/gatekeeper/templates/ -name '*.yaml' \
+              ! -name 'k8s-block-critical-cve.yaml' \
+              -printf '--filename=%p ')
 
   # ─── Python CLI Tests ────────────────────────────────────────
   python-tests:
