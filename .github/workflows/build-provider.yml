@@ -1,10 +1,12 @@
 name: Build Trivy Admission Provider
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'provider/trivy-admission/**'
+      - '.github/workflows/build-provider.yml'
   pull_request:
     branches: [main]
     paths:
