@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trivy-admission-provider
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: trivy-admission-provider
+    app.kubernetes.io/part-of: platformforge
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trivy-admission-provider
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: trivy-admission-provider
+    app.kubernetes.io/part-of: platformforge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trivy-admission-provider
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trivy-admission-provider
+        app.kubernetes.io/part-of: platformforge
+    spec:
+      serviceAccountName: trivy-admission-provider
+      containers:
+        - name: provider
+          image: ghcr.io/brianbeck/trivy-admission-provider:v0.1.0
+          ports:
+            - containerPort: 8443
+              protocol: TCP
+          env:
+            - name: TLS_CERT_FILE
+              value: /certs/tls.crt
+            - name: TLS_KEY_FILE
+              value: /certs/tls.key
+          volumeMounts:
+            - name: tls
+              mountPath: /certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 5
+      volumes:
+        - name: tls
+          secret:
+            secretName: trivy-admission-provider-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trivy-admission-provider
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/name: trivy-admission-provider
+    app.kubernetes.io/part-of: platformforge
+spec:
+  selector:
+    app.kubernetes.io/name: trivy-admission-provider
+  ports:
+    - port: 8443
+      targetPort: 8443
+      protocol: TCP

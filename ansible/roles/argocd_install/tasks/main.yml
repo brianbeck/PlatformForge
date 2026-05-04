@@ -293,6 +293,7 @@
       ] + ([{"src": "22-alloy.yml.j2", "dest": "22-logging/alloy.yml"}] if loki_url | default('') | length > 0 else []) + [
         {"src": "30-gatekeeper-core.yml.j2", "dest": "30-policy-core/gatekeeper-core.yml"},
         {"src": "32-sigstore-policy-controller.yml.j2", "dest": "32-sigstore/sigstore-policy-controller.yml"},
+        {"src": "35-trivy-admission-provider.yml.j2", "dest": "35-trivy-admission/trivy-admission-provider.yml"},
         {"src": "40-gatekeeper-templates.yml.j2", "dest": "40-policy-templates/gatekeeper-templates.yml"},
         {"src": "50-gatekeeper-constraints.yml.j2", "dest": "50-policy-constraints/gatekeeper-constraints.yml"},
         {"src": "60-falco.yml.j2", "dest": "60-runtime-security/falco.yml"},

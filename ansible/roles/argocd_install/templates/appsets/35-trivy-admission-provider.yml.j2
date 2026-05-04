@@ -1,0 +1,51 @@
+# Trivy Admission Provider - Singleton (one per cluster)
+# Gatekeeper External Data Provider that queries Trivy VulnerabilityReports
+# to block pods with critical CVEs at admission time (Security Layer 4).
+# Wave 35: after Gatekeeper (30) and Sigstore (32), before constraints (40-50)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: trivy-admission-provider
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+{% for entry in singleton_envs %}
+          - env: "{{ entry.env }}"
+            project: "{{ entry.project }}"
+{% endfor %}
+  template:
+    metadata:
+      name: "trivy-admission-provider-{{ '{{env}}' }}"
+      namespace: argocd
+      labels:
+        app.kubernetes.io/part-of: platformforge
+        platformforge/service: trivy-admission-provider
+      annotations:
+        argocd.argoproj.io/sync-wave: "35"
+        notifications.argoproj.io/subscribe.on-health-degraded: ""
+        notifications.argoproj.io/subscribe.on-sync-failed: ""
+    spec:
+      project: "{{ '{{project}}' }}"
+      source:
+        repoURL: {{ platformforge_repo_url }}
+        targetRevision: {{ platformforge_repo_revision }}
+        path: platform/trivy-admission-provider/manifests
+        directory:
+          recurse: false
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: gatekeeper-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 5m

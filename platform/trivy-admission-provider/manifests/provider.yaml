@@ -1,0 +1,10 @@
+# Gatekeeper External Data Provider pointing to the Trivy admission service.
+# ConstraintTemplates use external_data({"provider": "trivy-vulnerability-checker", ...})
+# to query this provider at admission time.
+apiVersion: externaldata.gatekeeper.sh/v1beta1
+kind: Provider
+metadata:
+  name: trivy-vulnerability-checker
+spec:
+  url: https://trivy-admission-provider.gatekeeper-system:8443/validate
+  timeout: 10

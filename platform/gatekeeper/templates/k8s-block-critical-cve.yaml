@@ -1,0 +1,91 @@
+# Block pods with critical CVEs at admission time (Security Layer 4).
+# Queries the Trivy admission provider via Gatekeeper External Data API
+# to check VulnerabilityReport CRDs for CRITICAL severity vulnerabilities.
+# Part of HIPAA integrity controls (§164.312(c)).
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblockcriticalcve
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    description: Blocks pods whose container images have critical CVEs detected by Trivy
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockCriticalCVE
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            maxCritical:
+              description: >-
+                Maximum number of CRITICAL CVEs allowed (default: 0).
+                Set to -1 to disable critical CVE blocking.
+              type: integer
+              default: 0
+            exemptImages:
+              description: >-
+                List of image glob patterns to exempt from CVE checking.
+                Supports wildcards (e.g., "registry.k8s.io/*").
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sblockcriticalcve
+
+        violation[{"msg": msg}] {
+          # Skip if maxCritical is -1 (disabled)
+          max_critical := object.get(input.parameters, "maxCritical", 0)
+          max_critical >= 0
+
+          container := input.review.object.spec.containers[_]
+          not is_exempt(container.image)
+
+          response := external_data({
+            "provider": "trivy-vulnerability-checker",
+            "keys": [container.image]
+          })
+
+          result := response.responses[_]
+          result[2] == ""
+          critical_count := object.get(result[1], "criticalCount", 0)
+          critical_count > max_critical
+
+          cves := object.get(result[1], "cves", [])
+          msg := sprintf(
+            "Image '%v' has %v critical CVE(s) (max allowed: %v). CVEs: %v. Fix vulnerabilities before deploying.",
+            [container.image, critical_count, max_critical, cves]
+          )
+        }
+
+        violation[{"msg": msg}] {
+          max_critical := object.get(input.parameters, "maxCritical", 0)
+          max_critical >= 0
+
+          container := input.review.object.spec.initContainers[_]
+          not is_exempt(container.image)
+
+          response := external_data({
+            "provider": "trivy-vulnerability-checker",
+            "keys": [container.image]
+          })
+
+          result := response.responses[_]
+          result[2] == ""
+          critical_count := object.get(result[1], "criticalCount", 0)
+          critical_count > max_critical
+
+          cves := object.get(result[1], "cves", [])
+          msg := sprintf(
+            "Init container image '%v' has %v critical CVE(s) (max allowed: %v). CVEs: %v.",
+            [container.image, critical_count, max_critical, cves]
+          )
+        }
+
+        is_exempt(image) {
+          exempt := input.parameters.exemptImages[_]
+          glob.match(exempt, ["/"], image)
+        }
