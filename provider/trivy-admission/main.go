@@ -54,6 +54,8 @@ type ItemResult struct {
 type CVEResult struct {
 	HasCritical   bool     `json:"hasCritical"`
 	CriticalCount int      `json:"criticalCount"`
+	HasHigh       bool     `json:"hasHigh"`
+	HighCount     int      `json:"highCount"`
 	CVEs          []string `json:"cves"`
 }
 
@@ -165,6 +167,8 @@ func checkImage(ctx context.Context, imageRef string) (*CVEResult, error) {
 	result := &CVEResult{
 		HasCritical:   false,
 		CriticalCount: 0,
+		HasHigh:       false,
+		HighCount:     0,
 		CVEs:          []string{},
 	}
 
@@ -174,14 +178,19 @@ func checkImage(ctx context.Context, imageRef string) (*CVEResult, error) {
 			continue
 		}
 
-		// Found a matching report — extract critical CVEs
-		criticals := extractCriticalCVEs(&report)
+		// Found a matching report — extract critical and high CVEs
+		criticals, highs := extractCVEs(&report)
 		result.CriticalCount += len(criticals)
+		result.HighCount += len(highs)
 		result.CVEs = append(result.CVEs, criticals...)
+		result.CVEs = append(result.CVEs, highs...)
 	}
 
 	if result.CriticalCount > 0 {
 		result.HasCritical = true
+	}
+	if result.HighCount > 0 {
+		result.HasHigh = true
 	}
 
 	// Cap CVE list to avoid huge responses
@@ -210,27 +219,30 @@ func getReportImage(report *unstructured.Unstructured) string {
 	return repo
 }
 
-func extractCriticalCVEs(report *unstructured.Unstructured) []string {
+func extractCVEs(report *unstructured.Unstructured) (criticals []string, highs []string) {
 	vulns, found, _ := unstructured.NestedSlice(report.Object, "report", "vulnerabilities")
 	if !found {
-		return nil
+		return nil, nil
 	}
 
-	var criticals []string
 	for _, v := range vulns {
 		vuln, ok := v.(map[string]interface{})
 		if !ok {
 			continue
 		}
 		severity, _ := vuln["severity"].(string)
-		if strings.EqualFold(severity, "CRITICAL") {
-			vulnID, _ := vuln["vulnerabilityID"].(string)
-			if vulnID != "" {
-				criticals = append(criticals, vulnID)
-			}
+		vulnID, _ := vuln["vulnerabilityID"].(string)
+		if vulnID == "" {
+			continue
+		}
+		switch {
+		case strings.EqualFold(severity, "CRITICAL"):
+			criticals = append(criticals, vulnID)
+		case strings.EqualFold(severity, "HIGH"):
+			highs = append(highs, vulnID)
 		}
 	}
-	return criticals
+	return criticals, highs
 }
 
 func normalizeImage(ref string) string {

@@ -310,12 +310,28 @@ config via overlay values. Changes needed for full cloud support:
 **Estimated scope:** 2-3 days for DNS provider abstraction + GatewayClass config.
 The rest is env-repo-level config, not PlatformForge code changes.
 
-**Security Layer 4: Gatekeeper + External Data Provider**
-Gatekeeper querying Trivy Operator vulnerability data at admission time. Required components:
-- Gatekeeper External Data Provider CRD pointing to Trivy Operator
-- ConstraintTemplate querying vulnerability data via the provider
-- Constraints with configurable CVE thresholds
-Reference: https://open-policy-agent.github.io/gatekeeper/website/docs/externaldata
+**Security Layer 4: Gatekeeper + External Data Provider** — **DONE**
+Trivy admission provider (Go) queries VulnerabilityReport CRDs at admission time.
+K8sBlockCriticalCVE ConstraintTemplate enforces thresholds:
+- Stage: maxCritical=0, maxHigh=10 (dryrun)
+- Prod: maxCritical=0, maxHigh=5 (deny)
+
+**CVE policy audit trail + DevExForge integration**
+When teams need to modify CVE thresholds (exemptions, temporary increases):
+- Changes to constraint parameters should be tracked with:
+  - Who requested the change
+  - Business justification (which CVE, which image, why)
+  - Remediation date (when the exemption expires)
+  - Approval (who approved the risk acceptance)
+- DevExForge should provide a self-service UI/CLI for teams to:
+  - Request CVE exemptions for their namespaces
+  - View current violations and remediation status
+  - Auto-expire exemptions after the agreed date
+- Implementation options:
+  - Custom CRD (`CVEExemption`) with approval workflow (DevExForge operator reconciles)
+  - Git-based: teams submit PRs to env repo constraints with exemption template
+  - Audit log: all constraint changes logged to Loki with requester/approver metadata
+- This ties into the broader HIPAA audit controls requirement (§164.312(b))
 
 ## HIPAA Compliance Readiness
 
