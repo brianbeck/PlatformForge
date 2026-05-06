@@ -203,7 +203,10 @@ Argo CD deploys services in wave order:
 | -10 | Sealed Secrets or ESO | Secrets available before other services |
 | 10 | Traefik | Ingress needed for external access |
 | 20 | kube-prometheus-stack | CRDs needed by ServiceMonitors |
+| 22 | Alloy | Log shipping to external Loki |
 | 30 | Gatekeeper controller | Must run before templates |
+| 32 | Sigstore Policy Controller | Image signature verification |
+| 35 | Trivy Admission Provider | CVE admission blocking (Layer 4) |
 | 40 | ConstraintTemplates | Creates CRDs for constraints |
 | 50 | Constraints | Uses CRDs from wave 40 |
 | 60 | Falco | Needs monitoring CRDs |
@@ -245,6 +248,25 @@ Manages Kubernetes Secrets securely. Choose during bootstrap:
 - Stage: 12h rescan | Prod: 24h rescan
 - PrometheusRules alert on critical vulnerabilities
 
+### Sigstore Policy Controller (Image Signature Verification)
+- Verifies Cosign image signatures at admission time via `ClusterImagePolicy` CRDs
+- Deployed at wave 32 in `cosign-system` namespace
+- Enforces that your organization's images are cryptographically signed before deployment
+
+### Trivy Admission Provider (CVE Admission Blocking — Security Layer 4)
+- Custom Go service querying Trivy VulnerabilityReport CRDs at admission time
+- Gatekeeper External Data Provider blocks pods with excessive CVEs before they deploy
+- HIPAA-compliant thresholds (configurable per environment):
+
+| Environment | Max CRITICAL | Max HIGH | Enforcement |
+|---|---|---|---|
+| Stage | 0 | 10 | dryrun (log only) |
+| Prod | 0 | 5 | deny (block deployment) |
+
+- Parameters configurable in `platformforge-env/overlays/gatekeeper/{stage,prod}/constraints.yaml`
+- Supports `exemptImages` glob patterns for vendor images with documented risk acceptance
+- Image: `ghcr.io/brianbeck/trivy-admission-provider` (built via GitHub Actions)
+
 ### Argo Rollouts (Progressive Delivery)
 - Blue-green deploys (service-selector swap) and **weighted canary** with real traffic shifting
 - **Gateway API traffic router** (`argoproj-labs/gatewayAPI` plugin v0.13.0) manipulates HTTPRoute `backendRef` weights between stable and canary services during canary steps
@@ -265,7 +287,7 @@ Manages Kubernetes Secrets securely. Choose during bootstrap:
 | 1 | Trivy CLI in CI | Build time | User implements |
 | 2 | Trivy Operator | Runtime | **Implemented** |
 | 3 | Trivy Operator | Continuous | **Implemented** |
-| 4 | Gatekeeper + External Data | Admission | **Planned** |
+| 4 | Gatekeeper + Trivy Admission Provider | Admission | **Implemented** |
 
 ## Alerting & Notifications
 
@@ -396,4 +418,7 @@ kubectl get servicemonitor -A
 | External Secrets (optional) | 2.3.0 | v2.3.0 |
 | Argo CD | 9.4.17 | v3.3.6 |
 | Argo Rollouts | 2.40.9 | v1.9.0 |
+| Grafana Alloy | 1.8.0 | v1.16.0 |
+| Sigstore Policy Controller | 0.10.6 | v0.13.1 |
+| Trivy Admission Provider | — | v0.1.0 |
 | Gateway API CRDs | — | v1.4.0 |
