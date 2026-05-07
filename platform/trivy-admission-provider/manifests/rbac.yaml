@@ -5,6 +5,8 @@ metadata:
   labels:
     app.kubernetes.io/name: trivy-admission-provider
     app.kubernetes.io/part-of: platformforge
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 rules:
   - apiGroups: ["aquasecurity.github.io"]
     resources: ["vulnerabilityreports"]
@@ -17,6 +19,8 @@ metadata:
   labels:
     app.kubernetes.io/name: trivy-admission-provider
     app.kubernetes.io/part-of: platformforge
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

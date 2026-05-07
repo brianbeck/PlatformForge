@@ -6,6 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: trivy-admission-provider
     app.kubernetes.io/part-of: platformforge
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -15,6 +17,8 @@ metadata:
   labels:
     app.kubernetes.io/name: trivy-admission-provider
     app.kubernetes.io/part-of: platformforge
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   replicas: 1
   selector:
@@ -91,6 +95,8 @@ metadata:
   labels:
     app.kubernetes.io/name: trivy-admission-provider
     app.kubernetes.io/part-of: platformforge
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   selector:
     app.kubernetes.io/name: trivy-admission-provider
