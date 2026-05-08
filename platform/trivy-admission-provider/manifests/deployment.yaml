@@ -63,11 +63,11 @@ spec:
               readOnly: true
           resources:
             requests:
-              cpu: 25m
-              memory: 32Mi
+              cpu: 50m
+              memory: 64Mi
             limits:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 200m
+              memory: 256Mi
           livenessProbe:
             httpGet:
               path: /healthz
